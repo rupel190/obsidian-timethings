@@ -23,6 +23,7 @@ export interface TimeThingsSettings {
 
     //DURATION KEY
 	editDurationPath: string;
+	editDurationFormat: string;
 	enableEditDurationKey: boolean;
 	nonTypingEditingTimePercentage: number;
 
@@ -49,6 +50,7 @@ export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	enableModifiedKeyUpdate: true,
 
 	editDurationPath: "edited_seconds",
+	editDurationFormat: "HH:mm:ss",
 	enableEditDurationKey: true,
 
 	updateIntervalFrontmatterMinutes: 1,
@@ -307,6 +309,19 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						.setValue(this.plugin.settings.editDurationPath)
 						.onChange(async (value) => {
 							this.plugin.settings.editDurationPath = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName("Edited duration key format")
+				.setDesc(createLink())
+				.addText((text) =>
+					text
+						.setPlaceholder("HH:mm:ss.SSSZ")
+						.setValue(this.plugin.settings.editDurationFormat)
+						.onChange(async (value) => {
+							this.plugin.settings.editDurationFormat = value;
 							await this.plugin.saveSettings();
 						}),
 				);

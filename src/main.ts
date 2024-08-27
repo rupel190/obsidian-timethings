@@ -205,14 +205,16 @@ export default class TimeThings extends Plugin {
 			// Our view could not be found in the workspace, create a new leaf
 			// in the right sidebar for it
 			leaf = workspace.getRightLeaf(false);
-			await leaf.setViewState({
+			await leaf?.setViewState({
 				type: VIEW_TYPE_MOST_EDITED,
 				active: true,
 			});
 		}
 
 		// "Reveal" the leaf in case it is in a collapsed sidebar
-		workspace.revealLeaf(leaf);
+		if(leaf) {
+			workspace.revealLeaf(leaf);
+		}
 	}
 
     // A function for reading and editing metadata realtime
@@ -242,7 +244,7 @@ export default class TimeThings extends Plugin {
 				useCustomSolution &&
 				environment instanceof Editor
 			) {
-				// CAMS
+				// CAMS: Custom Asset Management System
 				this.updateModifiedPropertyEditor(environment);
 				if (this.settings.enableEditDurationKey) {
 					this.updateDurationPropertyEditor(environment);
@@ -251,7 +253,7 @@ export default class TimeThings extends Plugin {
 				!useCustomSolution &&
 				environment instanceof TFile
 			) {
-				// BOMS
+				// BOMS: Build-in Object Management System
 				this.updateModifiedPropertyFrontmatter(environment);
 				if (this.settings.enableEditDurationKey) {
 					this.updateDurationPropertyFrontmatter(environment);
@@ -259,6 +261,9 @@ export default class TimeThings extends Plugin {
 			}
 		}
 	}
+
+
+
 
     updateModifiedPropertyEditor(editor: Editor) {
 		const dateNow = moment();
@@ -281,6 +286,9 @@ export default class TimeThings extends Plugin {
         // this.setValue(true, editor, userModifiedKeyName, dateFormatted,);
 		CAMS.setValue(editor, userModifiedKeyName, dateFormatted);
 	}
+
+
+
 
     async updateModifiedPropertyFrontmatter(file: TFile) {
 		await this.app.fileManager.processFrontMatter(
@@ -313,8 +321,51 @@ export default class TimeThings extends Plugin {
 			},
 		);
 	}
+
+
+
+
+	async updateDurationPropertyEditor(editor: Editor) {
+		// Prepare everything
+		if (this.allowEditDurationUpdate === false) {
+			return;
+		}
+		this.allowEditDurationUpdate = false;
+		const fieldLine = CAMS.getLine(editor, this.settings.editDurationPath); 
+
+		if (fieldLine === undefined) {
+			this.allowEditDurationUpdate = true;
+			return;
+		}
+
+		// Fetch & check validity
+		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
+		const userDateFormat = this.settings.editDurationFormat;
+		if(moment(value, userDateFormat, true).isValid() === false) {
+			this.isDebugBuild && console.log("Wrong format of edit_duration property");
+			return;
+		}
+
+		// Increment & set
+		const incremented = moment.duration(value).add(1, 'seconds').format(userDateFormat, { trim: false }); // Stick to given format
+		CAMS.setValue(
+			editor,
+			this.settings.editDurationPath,
+			incremented.toString(),
+		);
+
+		// Cool down
+		await sleep(1000 - this.settings.nonTypingEditingTimePercentage * 10);
+		this.allowEditDurationUpdate = true;
+	}
     
+
+
+
     async updateDurationPropertyFrontmatter(file: TFile) {
+
+		// TODO: Same for BOMS!
+
         // Prepare everything
         if (this.allowEditDurationUpdate === false) {
             return;
@@ -322,7 +373,7 @@ export default class TimeThings extends Plugin {
         this.allowEditDurationUpdate = false;
         await this.app.fileManager.processFrontMatter(
             file as TFile,
-            (frontmatter) => {
+            (frontmatter: any) => {
                 let value = BOMS.getValue(
                     frontmatter,
                     this.settings.editDurationPath,
@@ -332,7 +383,6 @@ export default class TimeThings extends Plugin {
                 }
 
                 // Increment
-
                 const newValue = +value + 10;
                 BOMS.setValue(
                     frontmatter,
@@ -343,38 +393,9 @@ export default class TimeThings extends Plugin {
         );
 
         // Cool down
-
         await sleep(10000 - this.settings.nonTypingEditingTimePercentage * 100);
         this.allowEditDurationUpdate = true;
     }
-
-	async updateDurationPropertyEditor(editor: Editor) {
-		// Prepare everything
-		if (this.allowEditDurationUpdate === false) {
-			return;
-		}
-		this.allowEditDurationUpdate = false;
-		const fieldLine = CAMS.getLine(editor, this.settings.editDurationPath);
-		if (fieldLine === undefined) {
-			this.allowEditDurationUpdate = true;
-			return;
-		}
-
-		// Increment
-
-		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
-		const newValue = +value + 1;
-		CAMS.setValue(
-			editor,
-			this.settings.editDurationPath,
-			newValue.toString(),
-		);
-
-		// Cool down
-
-		await sleep(1000 - this.settings.nonTypingEditingTimePercentage * 10);
-		this.allowEditDurationUpdate = true;
-	}
 
     // Don't worry about it
 	updateClockBar() {

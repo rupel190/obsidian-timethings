@@ -11,7 +11,7 @@ export interface FilterList {
 
 export function isFileMatchFilter(file: TFile, filter: FilterList,): boolean {
     // Check if file matches paths
-    if (isStringInList(file.parent.path, filter.folders)) {
+    if (file.parent && isStringInList(file.parent.path, filter.folders)) {
         return true;
     }
     // Check if file matches tags
@@ -27,7 +27,7 @@ export function isStringInList(path: string, list: string[]): boolean {
 export async function isTagPresentInFile(file: TFile, tag: string,) {
     await this.app.fileManager.processFrontMatter(
         file as TFile,
-        (frontmatter) => {
+        (frontmatter: any) => {
             const updateKeyValue = BOMS.getValue(frontmatter, "tags");
             if (updateKeyValue.includes(tag))
             {
