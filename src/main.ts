@@ -4,8 +4,9 @@ import {
 	WorkspaceLeaf,
 	Plugin,
 	TFile,
+	Notice,
 } from "obsidian";
-import { moment } from "obsidian";
+import { moment, Debouncer } from "obsidian";
 import {
 	MostEditedView,
 	VIEW_TYPE_MOST_EDITED as VIEW_TYPE_MOST_EDITED,
@@ -20,6 +21,7 @@ import {
 } from "./settings";
 import * as timeUtils from "./time.utils";
 import * as gates from "./gates.utils";
+import { allowedNodeEnvironmentFlags } from "process";
 
 export default class TimeThings extends Plugin {
 	settings: TimeThingsSettings;
@@ -28,12 +30,10 @@ export default class TimeThings extends Plugin {
 	debugBar: HTMLElement;
 	editDurationBar: HTMLElement;
 	allowEditDurationUpdate: boolean;
-	isProccessing = false;
+	isEditing = false;
 
 	async onload() {
-
         // Add commands
-
         this.addCommand(
             {
                 id: 'Show most edited notes view',
@@ -45,24 +45,21 @@ export default class TimeThings extends Plugin {
         );
 
         // Add buttons
-
         this.addRibbonIcon("history", "Activate view", () => {
             this.activateMostEditedNotesView();
         });
 
         // Register views
-
 		this.registerView(
 			VIEW_TYPE_MOST_EDITED,
 			(leaf) => new MostEditedView(leaf),
 		);
 
         // Load settings
-
 		await this.loadSettings();
 
 		// Variables initialization
-		this.isDebugBuild = false; // for debugging purposes
+		this.isDebugBuild = true; // for debugging purposes TODO: WELL IS IT OR IS IT NOT APPARENTLY ITS NOT IF THIS TEXT IS HERE!
 		this.allowEditDurationUpdate = true; // for cooldown
 
         // Set up Status Bar items
@@ -81,7 +78,6 @@ export default class TimeThings extends Plugin {
     registerMouseDownDOMEvent() {
 		this.registerDomEvent(document, "mousedown", (evt: MouseEvent) => {
 			// Prepare everything
-
 			const activeView =
 				this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (activeView === null) {
@@ -100,7 +96,6 @@ export default class TimeThings extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", (leaf) => {
 				// Prepare everything
-
 				const activeView =
 					this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (activeView === null) {
@@ -112,7 +107,6 @@ export default class TimeThings extends Plugin {
 				}
 
 				// Change the duration icon in status bar
-
 				this.onUserActivity(true, activeView, {
 					updateMetadata: false,
                     updateStatusBar: true,
@@ -146,25 +140,18 @@ export default class TimeThings extends Plugin {
 
 			if (this.settings.useCustomFrontmatterHandlingSolution === true) {
 				// Make sure the document is ready for edit
-
-				const activeView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (activeView === null) {
-					if (this.isDebugBuild) {
-						console.log("No active view");
-					}
+					this.isDebugBuild && console.log("No active view");
 					return;
 				}
 				const editor: Editor = activeView.editor;
 				if (editor.hasFocus() === false) {
-					if (this.isDebugBuild) {
-						console.log("No focus");
-					}
+					this.isDebugBuild && console.log("No focus");
 					return;
 				}
 
 				// Update everything
-
 				this.onUserActivity(true, activeView);
 			}
 		});
@@ -174,7 +161,6 @@ export default class TimeThings extends Plugin {
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
 				// Make everything ready for edit
-
 				const activeView =
 					this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (activeView === null) {
@@ -228,7 +214,7 @@ export default class TimeThings extends Plugin {
         let environment;
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
         
-
+		console.log('User activity! ', environment, updateStatusBar, updateMetadata);)
 		// Check if the file is in the blacklisted folder
 		// Check if the file has a property that puts it into a blacklist
 		// Check if the file itself is in the blacklist
@@ -262,9 +248,7 @@ export default class TimeThings extends Plugin {
 		}
 	}
 
-
-
-
+	// CAMS
     updateModifiedPropertyEditor(editor: Editor) {
 		const dateNow = moment();
 		const userDateFormat = this.settings.modifiedKeyFormat;
@@ -285,11 +269,9 @@ export default class TimeThings extends Plugin {
 		}
         // this.setValue(true, editor, userModifiedKeyName, dateFormatted,);
 		CAMS.setValue(editor, userModifiedKeyName, dateFormatted);
-	}
+	} 
 
-
-
-
+	// BOMS (Default)
     async updateModifiedPropertyFrontmatter(file: TFile) {
 		await this.app.fileManager.processFrontMatter(
 			file as TFile,
@@ -321,17 +303,17 @@ export default class TimeThings extends Plugin {
 			},
 		);
 	}
-
-
-
-
+	
+	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
+		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
+
 		// Prepare everything
 		if (this.allowEditDurationUpdate === false) {
 			return;
 		}
 		this.allowEditDurationUpdate = false;
-		const fieldLine = CAMS.getLine(editor, this.settings.editDurationPath); 
+		const fieldLine = CAMS.getLine(editor, this.settings.editDurationKeyName); 
 
 		if (fieldLine === undefined) {
 			this.allowEditDurationUpdate = true;
@@ -340,7 +322,7 @@ export default class TimeThings extends Plugin {
 
 		// Fetch & check validity
 		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
-		const userDateFormat = this.settings.editDurationFormat;
+		const userDateFormat = this.settings.editDurationKeyFormat;
 		if(moment(value, userDateFormat, true).isValid() === false) {
 			this.isDebugBuild && console.log("Wrong format of edit_duration property");
 			return;
@@ -348,23 +330,26 @@ export default class TimeThings extends Plugin {
 
 		// Increment & set
 		const incremented = moment.duration(value).add(1, 'seconds').format(userDateFormat, { trim: false }); // Stick to given format
+		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
 		CAMS.setValue(
 			editor,
-			this.settings.editDurationPath,
+			this.settings.editDurationKeyName,
 			incremented.toString(),
 		);
 
 		// Cool down
-		await sleep(1000 - this.settings.nonTypingEditingTimePercentage * 10);
+		console.log('cams sleepy start');
+		// TODO: Reset to 1 second
+
+		await sleep(4000 - this.settings.nonTypingEditingTimePercentage * 10);
 		this.allowEditDurationUpdate = true;
+		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
+		console.log('cams sleepy end');
 	}
-    
 
-
-
+	// BOMS (Default)
     async updateDurationPropertyFrontmatter(file: TFile) {
-
-		// TODO: Same for BOMS!
+		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 
         // Prepare everything
         if (this.allowEditDurationUpdate === false) {
@@ -374,20 +359,29 @@ export default class TimeThings extends Plugin {
         await this.app.fileManager.processFrontMatter(
             file as TFile,
             (frontmatter: any) => {
+				// Fetch
                 let value = BOMS.getValue(
                     frontmatter,
-                    this.settings.editDurationPath,
+                    this.settings.editDurationKeyName,
                 );
                 if (value === undefined) {
                     value = "0";
                 }
 
-                // Increment
-                const newValue = +value + 10;
+				// Check validity
+				const userDateFormat = this.settings.editDurationKeyFormat;
+				if(moment(value, userDateFormat, true).isValid() === false) {
+					this.isDebugBuild && console.log("Wrong format of edit_duration property");
+					return;
+				}
+				
+				// Increment
+				const incremented = moment.duration(value).add(10, 'seconds').format(userDateFormat, {trim: false});
+				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`, 0);
                 BOMS.setValue(
                     frontmatter,
-                    this.settings.editDurationPath,
-                    newValue,
+                    this.settings.editDurationKeyName,
+                    incremented,
                 );
             },
         );
@@ -395,8 +389,11 @@ export default class TimeThings extends Plugin {
         // Cool down
         await sleep(10000 - this.settings.nonTypingEditingTimePercentage * 100);
         this.allowEditDurationUpdate = true;
+		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
+
     }
 
+	
     // Don't worry about it
 	updateClockBar() {
 		const dateNow = moment();
@@ -406,9 +403,11 @@ export default class TimeThings extends Plugin {
 		const dateFormatted = dateChosen.format(this.settings.clockFormat);
 		const emoji = timeUtils.momentToClockEmoji(dateChosen);
 
-		this.settings.showEmojiStatusBar
-			? this.clockBar.setText(emoji + " " + dateFormatted)
-			: this.clockBar.setText(dateFormatted);
+		// TODO: Remove override
+		// this.settings.showEmojiStatusBar
+		// 	? this.clockBar.setText(emoji + " " + dateFormatted)
+		// 	: this.clockBar.setText(dateFormatted);
+
 	}
 
     // Gets called on OnLoad

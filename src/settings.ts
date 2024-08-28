@@ -22,16 +22,14 @@ export interface TimeThingsSettings {
 	updateIntervalFrontmatterMinutes: number;
 
     //DURATION KEY
-	editDurationPath: string;
-	editDurationFormat: string;
+	editDurationKeyName: string;
+	editDurationKeyFormat: string;
 	enableEditDurationKey: boolean;
 	nonTypingEditingTimePercentage: number;
 
 	enableSwitch: boolean;
 	switchKey: string;
 	switchKeyValue: string;
-
-
     
 }
 
@@ -49,8 +47,8 @@ export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	modifiedKeyFormat: "YYYY-MM-DD[T]HH:mm:ss.SSSZ",
 	enableModifiedKeyUpdate: true,
 
-	editDurationPath: "edited_seconds",
-	editDurationFormat: "HH:mm:ss",
+	editDurationKeyName: "edited_seconds",
+	editDurationKeyFormat: "HH:mm:ss",
 	enableEditDurationKey: true,
 
 	updateIntervalFrontmatterMinutes: 1,
@@ -306,9 +304,9 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 				.addText((text) =>
 					text
 						.setPlaceholder("edited_seconds")
-						.setValue(this.plugin.settings.editDurationPath)
+						.setValue(this.plugin.settings.editDurationKeyName)
 						.onChange(async (value) => {
-							this.plugin.settings.editDurationPath = value;
+							this.plugin.settings.editDurationKeyName = value;
 							await this.plugin.saveSettings();
 						}),
 				);
@@ -319,9 +317,9 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 				.addText((text) =>
 					text
 						.setPlaceholder("HH:mm:ss.SSSZ")
-						.setValue(this.plugin.settings.editDurationFormat)
+						.setValue(this.plugin.settings.editDurationKeyFormat)
 						.onChange(async (value) => {
-							this.plugin.settings.editDurationFormat = value;
+							this.plugin.settings.editDurationKeyFormat = value;
 							await this.plugin.saveSettings();
 						}),
 				);
