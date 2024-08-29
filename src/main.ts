@@ -205,85 +205,101 @@ export default class TimeThings extends Plugin {
 	}
 
 
-
-	timeout: number = 4000;
-	debounceEditingTime = debounce(() => {
-		// Only when the function finally runs through, calc time diff -> TODO: Make a custom debouncer which contains the calling function too?
+	// built-in debouncer -> TODO: this may handle the icon and time diff calculation while the frontmatter update could happen periodically 
+	timeout: number = 10000;
+	startTime: number | null;
+	timeDiff: number | null;
+	stopEditing = debounce(() => {
+		// Only when the function finally runs through, calc time diff 
 		if(this.startTime) {
-			const timeDiff = moment.now() - this.startTime;
-			// Reset state 
+			this.timeDiff = moment.now() - this.startTime; // !!! THis is required, maybe send an event?!
+			// Reset state
 			this.isEditing = false;
 			this.startTime = null;
 			// Write the change!
-			console.log(`Debounced, add timeDiff of ${(timeDiff-this.timeout)/1000}s (typing time) + ${this.timeout/1000}s (timeout) and reset editing state.`);
+			console.log(`Debounced, add timeDiff of ${(this.timeDiff-this.timeout)/1000}s (typing time) + ${this.timeout/1000}s (timeout) and reset editing state.`);
 			this.clockBar.setText(`✋🔴`);
+
 		} else {
 			this.isDebugBuild && console.log('Error calculating typing time, startTime: ', this.startTime);
 		}
 	}, this.timeout, true);
 
-	startTime: number | null;
-	whenToCallThis() {
+	// Save max every 10 seconds during interaction and once after it stops
+	updateEditedText = debounce(() => {
+
+		console.log("UPDATE EDITING TIME MAX EVERY 10 SECONDS");
+		
+	}, 10000, false);
+
+	startEditing() {
 		// Save current time only once, regardless of repeated calls (flag)
 		if(!this.isEditing) {
 			this.startTime = moment.now();
 			this.isEditing = true;
 			console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
 			this.clockBar.setText(`✏🔵`);
-
 		}
-		this.debounceEditingTime();
+		// this.updateEditedText();
+		this.stopEditing();
 	}
 
 
-
+	debouncedUpdateMetadata = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
+		console.log('debounced updating metadata');
+		let environment;
+        useCustomSolution ? environment = activeView.editor : environment = activeView.file;
+		if (
+			useCustomSolution &&
+			environment instanceof Editor
+		) {
+			// CAMS: Custom Asset Management System
+			this.updateModifiedPropertyEditor(environment);
+			if (this.settings.enableEditDurationKey) {
+				// console.log('calling cams');
+				// this.updateDurationPropertyEditor(environment);
+				
+				
+			}
+		} else if (
+			!useCustomSolution &&
+			environment instanceof TFile
+		) {
+			// BOMS: Build-in Object Management System
+			this.updateModifiedPropertyFrontmatter(environment);
+			if (this.settings.enableEditDurationKey) {
+				this.updateDurationPropertyFrontmatter(environment);
+			}
+		}
+	}
+	, 10000, false);
 
     // A function for reading and editing metadata realtime
+	// Gets called when a user changes a leaf, clicks a mouse, types in the editor, or modifies a file
 	onUserActivity(
 		useCustomSolution: boolean,
 		activeView: MarkdownView,
 		options: { updateMetadata: boolean, updateStatusBar: boolean, } = { updateMetadata: true, updateStatusBar: true, },
 	) {
 		const { updateMetadata, updateStatusBar } = options;
-		// Gets called when a user changes a leaf, clicks a mouse, types in the editor, or modifies a file
-        let environment;
-        useCustomSolution ? environment = activeView.editor : environment = activeView.file;
         
-		console.log('User activity! ');
-		this.whenToCallThis();
-
 		// Check if the file is in the blacklisted folder
 		// Check if the file has a property that puts it into a blacklist
 		// Check if the file itself is in the blacklist
-
-        //
+		
+        
+		console.log('User activity!');
+		this.startEditing();
+		
         if (updateStatusBar) {
             // update status bar
+			// console.log('Update status bar called');
         }
 
-		// Update metadata using either BOMS or cams
+		// Update metadata using either BOMS or CAMS
 		if (updateMetadata) {
-			// console.log('updating metadata');
-			if (
-				useCustomSolution &&
-				environment instanceof Editor
-			) {
-				// CAMS: Custom Asset Management System
-				this.updateModifiedPropertyEditor(environment);
-				if (this.settings.enableEditDurationKey) {
-					// console.log('calling cams');
-					this.updateDurationPropertyEditor(environment);
-				}
-			} else if (
-				!useCustomSolution &&
-				environment instanceof TFile
-			) {
-				// BOMS: Build-in Object Management System
-				this.updateModifiedPropertyFrontmatter(environment);
-				if (this.settings.enableEditDurationKey) {
-					this.updateDurationPropertyFrontmatter(environment);
-				}
-			}
+			// Needs the time passed for updating!
+			this.debouncedUpdateMetadata(useCustomSolution, activeView);
 		}
 	}
 
