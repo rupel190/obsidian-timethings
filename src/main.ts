@@ -5,6 +5,7 @@ import {
 	Plugin,
 	TFile,
 	Notice,
+	debounce,
 } from "obsidian";
 import { moment, Debouncer } from "obsidian";
 import {
@@ -203,6 +204,40 @@ export default class TimeThings extends Plugin {
 		}
 	}
 
+
+
+	timeout: number = 4000;
+	debounceEditingTime = debounce(() => {
+		// Only when the function finally runs through, calc time diff -> TODO: Make a custom debouncer which contains the calling function too?
+		if(this.startTime) {
+			const timeDiff = moment.now() - this.startTime;
+			// Reset state 
+			this.isEditing = false;
+			this.startTime = null;
+			// Write the change!
+			console.log(`Debounced, add timeDiff of ${(timeDiff-this.timeout)/1000}s (typing time) + ${this.timeout/1000}s (timeout) and reset editing state.`);
+			this.clockBar.setText(`✋🔴`);
+		} else {
+			this.isDebugBuild && console.log('Error calculating typing time, startTime: ', this.startTime);
+		}
+	}, this.timeout, true);
+
+	startTime: number | null;
+	whenToCallThis() {
+		// Save current time only once, regardless of repeated calls (flag)
+		if(!this.isEditing) {
+			this.startTime = moment.now();
+			this.isEditing = true;
+			console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
+			this.clockBar.setText(`✏🔵`);
+
+		}
+		this.debounceEditingTime();
+	}
+
+
+
+
     // A function for reading and editing metadata realtime
 	onUserActivity(
 		useCustomSolution: boolean,
@@ -214,7 +249,9 @@ export default class TimeThings extends Plugin {
         let environment;
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
         
-		console.log('User activity! ', environment, updateStatusBar, updateMetadata);)
+		console.log('User activity! ');
+		this.whenToCallThis();
+
 		// Check if the file is in the blacklisted folder
 		// Check if the file has a property that puts it into a blacklist
 		// Check if the file itself is in the blacklist
@@ -223,9 +260,10 @@ export default class TimeThings extends Plugin {
         if (updateStatusBar) {
             // update status bar
         }
-        
+
 		// Update metadata using either BOMS or cams
 		if (updateMetadata) {
+			// console.log('updating metadata');
 			if (
 				useCustomSolution &&
 				environment instanceof Editor
@@ -233,6 +271,7 @@ export default class TimeThings extends Plugin {
 				// CAMS: Custom Asset Management System
 				this.updateModifiedPropertyEditor(environment);
 				if (this.settings.enableEditDurationKey) {
+					// console.log('calling cams');
 					this.updateDurationPropertyEditor(environment);
 				}
 			} else if (
@@ -306,8 +345,8 @@ export default class TimeThings extends Plugin {
 	
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
-		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 
+		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 		// Prepare everything
 		if (this.allowEditDurationUpdate === false) {
 			return;
@@ -343,13 +382,13 @@ export default class TimeThings extends Plugin {
 
 		await sleep(4000 - this.settings.nonTypingEditingTimePercentage * 10);
 		this.allowEditDurationUpdate = true;
-		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
+		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 		console.log('cams sleepy end');
 	}
 
 	// BOMS (Default)
     async updateDurationPropertyFrontmatter(file: TFile) {
-		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
+		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 
         // Prepare everything
         if (this.allowEditDurationUpdate === false) {
@@ -389,7 +428,7 @@ export default class TimeThings extends Plugin {
         // Cool down
         await sleep(10000 - this.settings.nonTypingEditingTimePercentage * 100);
         this.allowEditDurationUpdate = true;
-		this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
+		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 
     }
 
