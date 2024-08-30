@@ -205,42 +205,55 @@ export default class TimeThings extends Plugin {
 	}
 
 
-	// built-in debouncer -> TODO: this may handle the icon and time diff calculation while the frontmatter update could happen periodically 
-	timeout: number = 10000;
+	timeout: number = 3000; // TODO: Into settings.ts
+	iconActive : boolean = false; // In a perfect world this matches the editing timer, but it's way simpler to decouple these variables
+	// Inactive typing
+	resetIcon = debounce(() => {
+		this.clockBar.setText(`✋🔴`); //TODO: settings.ts
+		this.iconActive = false;
+		this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.iconActive);
+	}, this.timeout, true);
+	
+	// Active typing icon
+	updateIcon() {
+		if(!this.iconActive) {
+			this.clockBar.setText(`✏🔵`);
+			this.iconActive = true;
+			this.isDebugBuild && console.log('Activate typing icon, active: ', this.iconActive);
+		}
+		this.resetIcon();
+	}
+	
+	// !!! MAKE ANOTHER ONE FOR THE PROPERTIES THAT INTERRUPTS
+	// the frontmatter update should happen periodically, but the timeout depends on BOMS/CAMS,
+	//not just on the setting as BOMS apparently requires a min of 10s
 	startTime: number | null;
 	timeDiff: number | null;
 	stopEditing = debounce(() => {
-		// Only when the function finally runs through, calc time diff 
+		// Run every x seconds starting from typing begin and update periodically
 		if(this.startTime) {
 			this.timeDiff = moment.now() - this.startTime; // !!! THis is required, maybe send an event?!
-			// Reset state
-			this.isEditing = false;
-			this.startTime = null;
 			// Write the change!
+			console.log('Pure timediff: ', this.timeDiff);
 			console.log(`Debounced, add timeDiff of ${(this.timeDiff-this.timeout)/1000}s (typing time) + ${this.timeout/1000}s (timeout) and reset editing state.`);
-			this.clockBar.setText(`✋🔴`);
+			
+			// Reset state
+			this.isEditing = false; // TODO: This is reset every <timeout>, which in turn resets the isEditing. FIX!!!!!!!!!!!!!!!
+			this.startTime = null;
 
 		} else {
 			this.isDebugBuild && console.log('Error calculating typing time, startTime: ', this.startTime);
 		}
-	}, this.timeout, true);
-
-	// Save max every 10 seconds during interaction and once after it stops
-	updateEditedText = debounce(() => {
-
-		console.log("UPDATE EDITING TIME MAX EVERY 10 SECONDS");
-		
-	}, 10000, false);
+	}, this.timeout, false);
 
 	startEditing() {
 		// Save current time only once, regardless of repeated calls (flag)
+		// console.log('editing? ', this.isEditing)
 		if(!this.isEditing) {
-			this.startTime = moment.now();
 			this.isEditing = true;
+			this.startTime = moment.now();
 			console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
-			this.clockBar.setText(`✏🔵`);
 		}
-		// this.updateEditedText();
 		this.stopEditing();
 	}
 
@@ -288,18 +301,19 @@ export default class TimeThings extends Plugin {
 		// Check if the file itself is in the blacklist
 		
         
-		console.log('User activity!');
-		this.startEditing();
+		console.log('--- User activity! ---');
 		
         if (updateStatusBar) {
-            // update status bar
+			this.updateIcon();
 			// console.log('Update status bar called');
         }
-
+		
 		// Update metadata using either BOMS or CAMS
 		if (updateMetadata) {
+			// console.log('Update Metadata');
+			this.startEditing();
 			// Needs the time passed for updating!
-			this.debouncedUpdateMetadata(useCustomSolution, activeView);
+			// this.debouncedUpdateMetadata(useCustomSolution, activeView);
 		}
 	}
 

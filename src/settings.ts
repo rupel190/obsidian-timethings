@@ -26,6 +26,7 @@ export interface TimeThingsSettings {
 	editDurationKeyFormat: string;
 	enableEditDurationKey: boolean;
 	nonTypingEditingTimePercentage: number;
+	editTimeoutMilliseconds: number;
 
 	enableSwitch: boolean;
 	switchKey: string;
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	editDurationKeyName: "edited_seconds",
 	editDurationKeyFormat: "HH:mm:ss",
 	enableEditDurationKey: true,
+	editTimeoutMilliseconds: 3000,
 
 	updateIntervalFrontmatterMinutes: 1,
 
