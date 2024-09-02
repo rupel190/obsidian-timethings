@@ -367,14 +367,12 @@ export default class TimeThings extends Plugin {
 	
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
-
 		// Fetch value
-		const fieldLine = CAMS.getLine(editor, this.settings.editDurationKeyName); 
+		let fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
 		if(fieldLine === undefined) {
 			console.log("Undefined value for duration property");
-			return;
+			fieldLine = 0;
 		}
-
 		// Parse & check validity
 		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
 		const userDateFormat = this.settings.editDurationKeyFormat;
@@ -382,7 +380,6 @@ export default class TimeThings extends Plugin {
 			this.isDebugBuild && console.log("Wrong format or invalid value with edit_duration property");
 			return;
 		}
-
 		// Increment & set
 		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
 		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
@@ -391,38 +388,32 @@ export default class TimeThings extends Plugin {
 			this.settings.editDurationKeyName,
 			incremented.toString(),
 		);
-
 	}
 
 	// BOMS (Default)
     async updateDurationPropertyFrontmatter(file: TFile) {
-
-        // Prepare everything
-        if (this.allowEditDurationUpdate === false) {
-            return;
-        }
-        this.allowEditDurationUpdate = false;
+        // Slow update
         await this.app.fileManager.processFrontMatter(
             file as TFile,
             (frontmatter: any) => {
 				// Fetch
-                let value = BOMS.getValue(
-                    frontmatter,
-                    this.settings.editDurationKeyName,
-                );
+                let value = BOMS.getValue(frontmatter, this.settings.editDurationKeyName);
                 if (value === undefined) {
-                    value = "0";
+					this.isDebugBuild && console.log('No edit_duration, initialize with 0.');
+                    value = moment.duration(0);
                 }
-
 				// Check validity
 				const userDateFormat = this.settings.editDurationKeyFormat;
 				if(moment(value, userDateFormat, true).isValid() === false) {
-					this.isDebugBuild && console.log("Wrong format of edit_duration property");
+					this.isDebugBuild && console.log("Wrong format for edit_duration property");
 					return;
 				}
-				
+				if(this.timeout < 10000) {
+					console.log('Invalid timeout for BOMS, reset to 10 seconds.');
+					this.timeout = 10000;
+				}
 				// Increment
-				const incremented = moment.duration(value).add(10, 'seconds').format(userDateFormat, {trim: false});
+				const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, {trim: false});
 				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`, 0);
                 BOMS.setValue(
                     frontmatter,
@@ -431,12 +422,6 @@ export default class TimeThings extends Plugin {
                 );
             },
         );
-
-        // Cool down
-        await sleep(10000 - this.settings.nonTypingEditingTimePercentage * 100);
-        this.allowEditDurationUpdate = true;
-		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
-
     }
 
 	
