@@ -226,16 +226,13 @@ export default class TimeThings extends Plugin {
 	}
 
 	
+	// not just on the setting as BOMS apparently requires a min of 10s 
+	// -> TODO: Limit Timeout if BOMS is active! Provide slider + numberbox > 10 for BOMS, >1 for cams)
+	
+	// Run every x seconds starting from typing begin and update periodically
 	startTime: number | null;
-	exactTimeDiff: number | null;
-	cumulatedTimeDiff: number = 0;
-	// the frontmatter update should happen periodically, but the timeout depends on BOMS/CAMS,
-	// not just on the setting as BOMS apparently requires a min of 10s -> TODO: Limit Timeout if BOMS is active!
 	updateEditedValue = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
-			// Run every x seconds starting from typing begin and update periodically
 			if(this.startTime) {
-				this.cumulatedTimeDiff += this.timeout;
-				console.log('Cumulated timediff: ', this.cumulatedTimeDiff);
 				this.updateMetadata(useCustomSolution, activeView);
 			}
 		}, this.timeout, false);
@@ -257,7 +254,6 @@ export default class TimeThings extends Plugin {
 		this.updateEditedValue(useCustomSolution, activeView);
 		this.resetEditing();
 	}
-
 
 	updateMetadata (useCustomSolution: boolean, activeView: MarkdownView) {
 		let environment;
@@ -301,7 +297,6 @@ export default class TimeThings extends Plugin {
 		// Check if the file has a property that puts it into a blacklist
 		// Check if the file itself is in the blacklist
 		
-        
 		console.log('--- User activity! ---');
 		
         if (updateStatusBar) {
@@ -389,7 +384,7 @@ export default class TimeThings extends Plugin {
 		}
 
 		// Increment & set
-		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Stick to given format
+		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
 		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
 		CAMS.setValue(
 			editor,
