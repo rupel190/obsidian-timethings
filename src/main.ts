@@ -74,6 +74,7 @@ export default class TimeThings extends Plugin {
 
         // Add a tab for settings
 		this.addSettingTab(new TimeThingsSettingsTab(this.app, this));
+
 	}
 
     registerMouseDownDOMEvent() {
@@ -205,7 +206,7 @@ export default class TimeThings extends Plugin {
 	}
 
 
-	timeout: number = 5000; // TODO: Into settings.ts
+	timeout: number = 3000; // TODO: Into settings.ts
 	iconActive : boolean = false; // In a perfect world this matches the editing timer, but it's way simpler to decouple these variables
 	// Inactive typing
 	resetIcon = debounce(() => {
@@ -223,34 +224,21 @@ export default class TimeThings extends Plugin {
 		}
 		this.resetIcon();
 	}
+
 	
-	// !!! MAKE ANOTHER ONE FOR THE PROPERTIES THAT INTERRUPTS
-	// the frontmatter update should happen periodically, but the timeout depends on BOMS/CAMS,
-	// not just on the setting as BOMS apparently requires a min of 10s
 	startTime: number | null;
 	exactTimeDiff: number | null;
 	cumulatedTimeDiff: number = 0;
-	updateEditingTime = debounce(() => {
-		// Run every x seconds starting from typing begin and update periodically
-		if(this.startTime) {
-			this.exactTimeDiff = moment.now() - this.startTime;
-			
-			// Write the change!
-			// console.log('abs timediff: ', this.exactTimeDiff);
-			// console.log('rel timediff: ', this.relTimeDiff);
-
-			// this.relTimeDiff += (this.absTimeDiff - this.relTimeDiff);
-			// console.log('time since last: ', this.relTimeDiff);
-			
-			// TODO: Only save the relative value, not the absolute like it is here
-			// console.log(`Debounced, exact timeDiff is ${(this.exactTimeDiff-this.timeout)/1000}s (typing time)  ${this.timeout/1000}s (timeout).`);
-			
-			this.cumulatedTimeDiff += this.timeout;
-			console.log('Cumulated timediff: ', this.cumulatedTimeDiff);
-			this.updateMetadata();
-
-		}
-	}, this.timeout, false);
+	// the frontmatter update should happen periodically, but the timeout depends on BOMS/CAMS,
+	// not just on the setting as BOMS apparently requires a min of 10s -> TODO: Limit Timeout if BOMS is active!
+	updateEditedValue = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
+			// Run every x seconds starting from typing begin and update periodically
+			if(this.startTime) {
+				this.cumulatedTimeDiff += this.timeout;
+				console.log('Cumulated timediff: ', this.cumulatedTimeDiff);
+				this.updateMetadata(useCustomSolution, activeView);
+			}
+		}, this.timeout, false);
 
 	resetEditing = debounce(() => {
 		// Reset state
@@ -259,15 +247,14 @@ export default class TimeThings extends Plugin {
 		this.startTime = null;
 	}, this.timeout, true);
 
-	startEditing() {
+	updateEditing(useCustomSolution: boolean, activeView: MarkdownView) {
 		// Save current time only once, regardless of repeated calls (flag)
-		// console.log('editing? ', this.isEditing)
 		if(!this.isEditing) {
 			this.isEditing = true;
 			this.startTime = moment.now();
 			console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
 		}
-		this.updateEditingTime();
+		this.updateEditedValue(useCustomSolution, activeView);
 		this.resetEditing();
 	}
 
@@ -282,8 +269,9 @@ export default class TimeThings extends Plugin {
 			// CAMS: Custom Asset Management System
 			this.updateModifiedPropertyEditor(environment);
 			if (this.settings.enableEditDurationKey) {
-				// console.log('calling cams');
+				console.log('calling cams!');
 				this.updateDurationPropertyEditor(environment);
+				
 			}
 		} else if (
 			!useCustomSolution &&
@@ -292,6 +280,7 @@ export default class TimeThings extends Plugin {
 			// BOMS: Build-in Object Management System
 			this.updateModifiedPropertyFrontmatter(environment);
 			if (this.settings.enableEditDurationKey) {
+				console.log('boms update');
 				this.updateDurationPropertyFrontmatter(environment);
 			}
 		}
@@ -305,6 +294,8 @@ export default class TimeThings extends Plugin {
 		options: { updateMetadata: boolean, updateStatusBar: boolean, } = { updateMetadata: true, updateStatusBar: true, },
 	) {
 		const { updateMetadata, updateStatusBar } = options;
+		let environment;
+        useCustomSolution ? environment = activeView.editor : environment = activeView.file;
         
 		// Check if the file is in the blacklisted folder
 		// Check if the file has a property that puts it into a blacklist
@@ -315,15 +306,11 @@ export default class TimeThings extends Plugin {
 		
         if (updateStatusBar) {
 			this.updateIcon();
-			// console.log('Update status bar called');
         }
 		
 		// Update metadata using either BOMS or CAMS
 		if (updateMetadata) {
-			// console.log('Update Metadata');
-			this.startEditing();
-			// Needs the time passed for updating!
-			// this.debouncedUpdateMetadata(useCustomSolution, activeView);
+			this.updateEditing(useCustomSolution, activeView);
 		}
 	}
 
@@ -386,29 +373,23 @@ export default class TimeThings extends Plugin {
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
 
-		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
-		// Prepare everything
-		if (this.allowEditDurationUpdate === false) {
-			return;
-		}
-		this.allowEditDurationUpdate = false;
+		// Fetch value
 		const fieldLine = CAMS.getLine(editor, this.settings.editDurationKeyName); 
-
-		if (fieldLine === undefined) {
-			this.allowEditDurationUpdate = true;
+		if(fieldLine === undefined) {
+			console.log("Undefined value for duration property");
 			return;
 		}
 
-		// Fetch & check validity
+		// Parse & check validity
 		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
 		const userDateFormat = this.settings.editDurationKeyFormat;
 		if(moment(value, userDateFormat, true).isValid() === false) {
-			this.isDebugBuild && console.log("Wrong format of edit_duration property");
+			this.isDebugBuild && console.log("Wrong format or invalid value with edit_duration property");
 			return;
 		}
 
 		// Increment & set
-		const incremented = moment.duration(value).add(1, 'seconds').format(userDateFormat, { trim: false }); // Stick to given format
+		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Stick to given format
 		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
 		CAMS.setValue(
 			editor,
@@ -416,19 +397,10 @@ export default class TimeThings extends Plugin {
 			incremented.toString(),
 		);
 
-		// Cool down
-		console.log('cams sleepy start');
-		// TODO: Reset to 1 second
-
-		await sleep(4000 - this.settings.nonTypingEditingTimePercentage * 10);
-		this.allowEditDurationUpdate = true;
-		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
-		console.log('cams sleepy end');
 	}
 
 	// BOMS (Default)
     async updateDurationPropertyFrontmatter(file: TFile) {
-		// this.clockBar.setText(`Paused? ${this.allowEditDurationUpdate.toString()}`);
 
         // Prepare everything
         if (this.allowEditDurationUpdate === false) {
