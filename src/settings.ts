@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, SliderComponent, TextComponent } from "obsidian";
 import TimeThings from "./main";
 
 export interface TimeThingsSettings {
@@ -250,28 +250,42 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						}),
 				);
 
-			if (
-				this.plugin.settings.useCustomFrontmatterHandlingSolution ===
-				false
-			) {
+			
+				let mySlider : SliderComponent;
+				let myText: TextComponent;
+				let minValue = 1
+				if (this.plugin.settings.useCustomFrontmatterHandlingSolution === false) {
+					minValue = 10;
+				}	
 				new Setting(containerEl)
-					.setName("Interval between updates")
-					.setDesc("Only for Obsidian frontmatter API.")
+					// .setName("Interval between updates")
+					.setName(`Editing Timeout for ${this.plugin.settings.useCustomFrontmatterHandlingSolution === false ? "BOMS" : "CAMS"}`)
+					.setDesc("Timeout in seconds to stop counting. Also reflected in the status bar. Affects all update frequencies. IF DEFAULT IS ACTIVE THEN > 10, OTHERWISE >1!!! ENFORECE! Also preview on slider wrong.")
 					.addSlider((slider) =>
-						slider
-							.setLimits(1, 15, 1)
+						mySlider = slider
+							.setLimits(1, 90, 1)
 							.setValue(
-								this.plugin.settings
-									.updateIntervalFrontmatterMinutes,
+								this.plugin.settings.editTimeoutMilliseconds,
 							)
 							.onChange(async (value) => {
-								this.plugin.settings.updateIntervalFrontmatterMinutes =
-									value;
+								this.plugin.settings.editTimeoutMilliseconds = value * 1000;
+								myText.setValue(value.toString());
 								await this.plugin.saveSettings();
 							})
 							.setDynamicTooltip(),
-					);
-			}
+					)
+					.addText((text) =>
+						myText = text
+							.setPlaceholder("10020")
+							.setValue(
+								this.plugin.settings.editTimeoutMilliseconds.toString(),
+							)
+							.onChange(async (value) => {
+								const numericValue = parseInt(value, 10);
+								this.plugin.settings.editTimeoutMilliseconds = numericValue * 1000;
+								mySlider.setValue(numericValue);
+								await this.plugin.saveSettings();
+							}))
 		}
 
 		// #endregion

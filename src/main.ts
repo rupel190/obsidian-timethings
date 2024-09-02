@@ -30,7 +30,6 @@ export default class TimeThings extends Plugin {
 	clockBar: HTMLElement; // # Required
 	debugBar: HTMLElement;
 	editDurationBar: HTMLElement;
-	allowEditDurationUpdate: boolean;
 	isEditing = false;
 
 	async onload() {
@@ -61,7 +60,6 @@ export default class TimeThings extends Plugin {
 
 		// Variables initialization
 		this.isDebugBuild = true; // for debugging purposes TODO: WELL IS IT OR IS IT NOT APPARENTLY ITS NOT IF THIS TEXT IS HERE!
-		this.allowEditDurationUpdate = true; // for cooldown
 
         // Set up Status Bar items
 		this.setUpStatusBarItems();
@@ -408,6 +406,8 @@ export default class TimeThings extends Plugin {
 					this.isDebugBuild && console.log("Wrong format for edit_duration property");
 					return;
 				}
+
+				// TODO: Do this right in the settings. Maybe the date could also be validated directly in the settings?
 				if(this.timeout < 10000) {
 					console.log('Invalid timeout for BOMS, reset to 10 seconds.');
 					this.timeout = 10000;
