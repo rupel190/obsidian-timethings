@@ -205,7 +205,7 @@ export default class TimeThings extends Plugin {
 	}
 
 
-	timeout: number = 3000; // TODO: Into settings.ts
+	timeout: number = 5000; // TODO: Into settings.ts
 	iconActive : boolean = false; // In a perfect world this matches the editing timer, but it's way simpler to decouple these variables
 	// Inactive typing
 	resetIcon = debounce(() => {
@@ -226,25 +226,38 @@ export default class TimeThings extends Plugin {
 	
 	// !!! MAKE ANOTHER ONE FOR THE PROPERTIES THAT INTERRUPTS
 	// the frontmatter update should happen periodically, but the timeout depends on BOMS/CAMS,
-	//not just on the setting as BOMS apparently requires a min of 10s
+	// not just on the setting as BOMS apparently requires a min of 10s
 	startTime: number | null;
-	timeDiff: number | null;
-	stopEditing = debounce(() => {
+	exactTimeDiff: number | null;
+	cumulatedTimeDiff: number = 0;
+	updateEditingTime = debounce(() => {
 		// Run every x seconds starting from typing begin and update periodically
 		if(this.startTime) {
-			this.timeDiff = moment.now() - this.startTime; // !!! THis is required, maybe send an event?!
-			// Write the change!
-			console.log('Pure timediff: ', this.timeDiff);
-			console.log(`Debounced, add timeDiff of ${(this.timeDiff-this.timeout)/1000}s (typing time) + ${this.timeout/1000}s (timeout) and reset editing state.`);
+			this.exactTimeDiff = moment.now() - this.startTime;
 			
-			// Reset state
-			this.isEditing = false; // TODO: This is reset every <timeout>, which in turn resets the isEditing. FIX!!!!!!!!!!!!!!!
-			this.startTime = null;
+			// Write the change!
+			// console.log('abs timediff: ', this.exactTimeDiff);
+			// console.log('rel timediff: ', this.relTimeDiff);
 
-		} else {
-			this.isDebugBuild && console.log('Error calculating typing time, startTime: ', this.startTime);
+			// this.relTimeDiff += (this.absTimeDiff - this.relTimeDiff);
+			// console.log('time since last: ', this.relTimeDiff);
+			
+			// TODO: Only save the relative value, not the absolute like it is here
+			// console.log(`Debounced, exact timeDiff is ${(this.exactTimeDiff-this.timeout)/1000}s (typing time)  ${this.timeout/1000}s (timeout).`);
+			
+			this.cumulatedTimeDiff += this.timeout;
+			console.log('Cumulated timediff: ', this.cumulatedTimeDiff);
+			this.updateMetadata();
+
 		}
 	}, this.timeout, false);
+
+	resetEditing = debounce(() => {
+		// Reset state
+		this.isDebugBuild && console.log('Editing halted!');
+		this.isEditing = false;
+		this.startTime = null;
+	}, this.timeout, true);
 
 	startEditing() {
 		// Save current time only once, regardless of repeated calls (flag)
@@ -254,12 +267,12 @@ export default class TimeThings extends Plugin {
 			this.startTime = moment.now();
 			console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
 		}
-		this.stopEditing();
+		this.updateEditingTime();
+		this.resetEditing();
 	}
 
 
-	debouncedUpdateMetadata = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
-		console.log('debounced updating metadata');
+	updateMetadata (useCustomSolution: boolean, activeView: MarkdownView) {
 		let environment;
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
 		if (
@@ -270,9 +283,7 @@ export default class TimeThings extends Plugin {
 			this.updateModifiedPropertyEditor(environment);
 			if (this.settings.enableEditDurationKey) {
 				// console.log('calling cams');
-				// this.updateDurationPropertyEditor(environment);
-				
-				
+				this.updateDurationPropertyEditor(environment);
 			}
 		} else if (
 			!useCustomSolution &&
@@ -285,7 +296,6 @@ export default class TimeThings extends Plugin {
 			}
 		}
 	}
-	, 10000, false);
 
     // A function for reading and editing metadata realtime
 	// Gets called when a user changes a leaf, clicks a mouse, types in the editor, or modifies a file
