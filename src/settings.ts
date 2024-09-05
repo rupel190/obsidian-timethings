@@ -130,7 +130,6 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl.createDiv({cls: "textbox"}))
-		// .setName("Interval between updates")
 		.setName(`Editing Timeout for ${this.plugin.settings.useCustomFrontmatterHandlingSolution === false ? "BOMS" : "CAMS"}`)
 		.setDesc(description)
 		.addSlider((slider) => mySlider = slider // implicit return without curlies

@@ -28,14 +28,28 @@ export default class TimeThings extends Plugin {
 	settings: TimeThingsSettings;
 	isDebugBuild: boolean;
 	isEditing = false;
-	timeout = 1000; // Fallback in case settings doesn't immediately initialize
 
 	clockBar: HTMLElement; // # Required
 	editIndicatorBar: HTMLElement;
 	debugBar: HTMLElement;
 
+	//TODO: Still uses 2000 internally somewhere!
+	// Allows for dynamic retrieval whereas a value stored in a closure would be copied and subsequentially outdated
+	get timeout() {
+		let to = this.settings?.editTimeoutMilliseconds;
+		if(!to || isNaN(to) || to === undefined) {
+			console.log(`Timeout setting ${to} invalid, fallback!`);
+			to = 1300;
+		}
+		console.log('Timeout fetched: ', to);
+		return to;
+	}
+
 	//#region Load plugin
 	async onload() {
+		// Load settings
+		await this.loadSettings();
+
         // Add commands
         this.addCommand(
             {
@@ -58,12 +72,8 @@ export default class TimeThings extends Plugin {
 			(leaf) => new MostEditedView(leaf),
 		);
 
-        // Load settings
-		await this.loadSettings();
-		this.timeout = this.settings.editTimeoutMilliseconds;
-
 		// Variables initialization
-		this.isDebugBuild = true; // for debugging purposes TODO: WELL IS IT OR IS IT NOT APPARENTLY ITS NOT IF THIS TEXT IS HERE!
+		this.isDebugBuild = true; // for debugging purposes TODO: reset
 
         // Set up Status Bar items
 		this.setUpStatusBarItems();
@@ -376,7 +386,7 @@ export default class TimeThings extends Plugin {
 			return;
 		}
 		// Increment & set
-		const incremented = moment.duration(value).add(this.settings.editTimeoutMilliseconds, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
+		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
 		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
 		CAMS.setValue(
 			editor,
@@ -404,7 +414,7 @@ export default class TimeThings extends Plugin {
 					return;
 				}
 				// Increment
-				const incremented = moment.duration(value).add(this.settings.editTimeoutMilliseconds, 'milliseconds').format(userDateFormat, {trim: false});
+				const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, {trim: false});
 				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`, 0);
                 BOMS.setValue(
                     frontmatter,
@@ -431,8 +441,11 @@ export default class TimeThings extends Plugin {
 	// Typing indicator
 	iconActive : boolean = false; // Will match the editing timer, but it's better to decouple these variables
 	// Inactive typing
+	// Because the method is stored in a variable, the variable in the closure,
+	// namely timeout is not stored by reference but internally duplicated.
+	// Using a getter decouples the method from the settings
 	resetIcon = debounce(() => {
-		console.log("immedaitely", this.timeout);
+		console.log("immedaitely getter", this.timeout);
 		this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
 		this.iconActive = false;
 		this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.iconActive);
@@ -445,8 +458,8 @@ export default class TimeThings extends Plugin {
 			this.iconActive = true;
 			this.isDebugBuild && console.log('Activate typing icon, active: ', this.iconActive);
 		}
-		console.log("Timeout updateIcon(): ", this.timeout);
-		console.log("Timeout updateIcon()2: ", this.settings.editTimeoutMilliseconds);
+		console.log("Timeout updateIcon()getter: ", this.timeout);
+		// console.log("Timeout updateIcon()settingsprop: ", this.settings.editTimeoutMilliseconds);
 
 		this.resetIcon();
 	}
