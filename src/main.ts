@@ -28,6 +28,7 @@ export default class TimeThings extends Plugin {
 	settings: TimeThingsSettings;
 	isDebugBuild: boolean;
 	clockBar: HTMLElement; // # Required
+	editingBar: HTMLElement;
 	debugBar: HTMLElement;
 	editDurationBar: HTMLElement;
 	isEditing = false;
@@ -171,6 +172,7 @@ export default class TimeThings extends Plugin {
 				if (
 					this.settings.useCustomFrontmatterHandlingSolution === false
 				) {
+					console.log('this2 ');
 					this.onUserActivity(false, activeView);
 				}
 			}),
@@ -208,7 +210,7 @@ export default class TimeThings extends Plugin {
 	iconActive : boolean = false; // In a perfect world this matches the editing timer, but it's way simpler to decouple these variables
 	// Inactive typing
 	resetIcon = debounce(() => {
-		this.clockBar.setText(`✋🔴`); //TODO: settings.ts
+		this.editingBar.setText(`✋🔴`); //TODO: settings.ts
 		this.iconActive = false;
 		this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.iconActive);
 	}, this.timeout, true);
@@ -216,7 +218,7 @@ export default class TimeThings extends Plugin {
 	// Active typing icon
 	updateIcon() {
 		if(!this.iconActive) {
-			this.clockBar.setText(`✏🔵`);
+			this.editingBar.setText(`✏🔵`);
 			this.iconActive = true;
 			this.isDebugBuild && console.log('Activate typing icon, active: ', this.iconActive);
 		}
@@ -433,21 +435,14 @@ export default class TimeThings extends Plugin {
 		const dateChosen = this.settings.isUTC ? dateUTC : dateNow;
 		const dateFormatted = dateChosen.format(this.settings.clockFormat);
 		const emoji = timeUtils.momentToClockEmoji(dateChosen);
-
-		// TODO: Remove override
-		// this.settings.showEmojiStatusBar
-		// 	? this.clockBar.setText(emoji + " " + dateFormatted)
-		// 	: this.clockBar.setText(dateFormatted);
-
 	}
 
-    // Gets called on OnLoad
+    // Called on OnLoad, adds status bar
     setUpStatusBarItems() {
 		if (this.settings.enableClock) {
 			// Add clock icon
-			// Adds a status bar
 			this.clockBar = this.addStatusBarItem();
-			this.clockBar.setText(":)");
+			this.clockBar.setText(timeUtils.momentToClockEmoji(moment()));
 
 			// Change status bar text every second
 			this.updateClockBar();
@@ -457,6 +452,10 @@ export default class TimeThings extends Plugin {
 					+this.settings.updateIntervalMilliseconds,
 				),
 			);
+		}
+		if (this.settings.enableEditStatus) {
+			this.editingBar = this.addStatusBarItem();
+			this.editingBar.setText(this.settings.editIndicatorActive);
 		}
 
 	}

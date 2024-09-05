@@ -25,3 +25,17 @@ If your plugin does not need CSS, delete this file.
     max-height: 1rem;
     text-align: end;
 }
+
+.statusBarTypingIndicator input[type="text"]
+{
+    display: flex;
+    justify-content: flex-end;
+    text-align: center;
+    width: 5rem;
+}
+
+.textbox input[type="text"] 
+{
+    text-align: center;
+    width: 3rem;
+}

@@ -5,9 +5,6 @@ export interface TimeThingsSettings {
     //CAMS
 	useCustomFrontmatterHandlingSolution: boolean;
 
-    //EMOJIS
-	showEmojiStatusBar: boolean;
-
     //CLOCK
 	clockFormat: string;
 	updateIntervalMilliseconds: string;
@@ -15,18 +12,21 @@ export interface TimeThingsSettings {
 	isUTC: boolean;
 
     //MODIFIED KEY
+	enableModifiedKey: boolean;
 	modifiedKeyName: string;
 	modifiedKeyFormat: string;
-	enableModifiedKeyUpdate: boolean;
     //BOMS
 	updateIntervalFrontmatterMinutes: number;
 
     //DURATION KEY
+	enableEditDurationKey: boolean;
 	editDurationKeyName: string;
 	editDurationKeyFormat: string;
-	enableEditDurationKey: boolean;
 	nonTypingEditingTimePercentage: number;
 	editTimeoutMilliseconds: number;
+	enableEditStatus: boolean;
+	editIndicatorActive: string;
+	editIndicatorInactive: string;
 
 	enableSwitch: boolean;
 	switchKey: string;
@@ -37,8 +37,6 @@ export interface TimeThingsSettings {
 export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	useCustomFrontmatterHandlingSolution: false,
 
-	showEmojiStatusBar: true,
-
 	clockFormat: "hh:mm A",
 	updateIntervalMilliseconds: "1000",
 	enableClock: true,
@@ -46,12 +44,15 @@ export const DEFAULT_SETTINGS: TimeThingsSettings = {
 
 	modifiedKeyName: "updated_at",
 	modifiedKeyFormat: "YYYY-MM-DD[T]HH:mm:ss.SSSZ",
-	enableModifiedKeyUpdate: true,
+	enableModifiedKey: true,
 
 	editDurationKeyName: "edited_seconds",
 	editDurationKeyFormat: "HH:mm:ss",
 	enableEditDurationKey: true,
 	editTimeoutMilliseconds: 3000,
+	enableEditStatus: true,
+	editIndicatorActive: "✋🔴",
+	editIndicatorInactive: "✏🔵",
 
 	updateIntervalFrontmatterMinutes: 1,
 
@@ -77,7 +78,6 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		// #region prerequisites
-
 		const createLink = () => {
 			const linkEl = document.createDocumentFragment();
 
@@ -89,54 +89,85 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 			);
 			return linkEl;
 		};
-
 		// #endregion
 
+
 		// #region custom frontmatter solution
+		let mySlider : SliderComponent;
+		let myText: TextComponent;
+		let description = "In seconds. Time to stop tracking after interaction has stopped. Value also used for saving interval. Textbox allows for higher values."
+		const minTimeoutBoms = 10;
+		const minTimeoutCams = 1;
 
 		new Setting(containerEl)
 			.setName("Use custom frontmatter handling solution")
-			.setDesc(
-				"Smoother experience. Prone to bugs if you use a nested value.",
-			)
+			.setDesc("Smoother experience. Prone to bugs if you use a nested value.",)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(
-						this.plugin.settings
-							.useCustomFrontmatterHandlingSolution,
-					)
+					.setValue(this.plugin.settings.useCustomFrontmatterHandlingSolution,)
 					.onChange(async (newValue) => {
-						this.plugin.settings.useCustomFrontmatterHandlingSolution =
-							newValue;
+						// console.log("Use custom frontmatter handling: ", newValue);
+						this.plugin.settings.useCustomFrontmatterHandlingSolution = newValue;
+						// await this.display(); // UI update obsolete
+
+						if (this.plugin.settings.useCustomFrontmatterHandlingSolution) {
+							// CAMS: Reset lower limit
+							mySlider.setLimits(minTimeoutCams, 90, 1);
+						} 
+						else {
+							// BOMS: Raise lower limit and bump if below
+							description += " Switch to default frontmatter solution for values <10s.";
+							console.log(mySlider.getValue());
+							mySlider.setLimits(minTimeoutBoms, 90, 1);
+							if(this.plugin.settings.editTimeoutMilliseconds < minTimeoutBoms * 1000) {
+								this.plugin.settings.editTimeoutMilliseconds = minTimeoutBoms * 1000;
+								myText.setValue(minTimeoutBoms.toString());
+								console.log("Bump BOMS timeout", this.plugin.settings.editTimeoutMilliseconds);
+							}
+						}
 						await this.plugin.saveSettings();
-						await this.display();
 					}),
 			);
+
+		new Setting(containerEl.createDiv({cls: "textbox"}))
+		// .setName("Interval between updates")
+		.setName(`Editing Timeout for ${this.plugin.settings.useCustomFrontmatterHandlingSolution === false ? "BOMS" : "CAMS"}`)
+		.setDesc(description)
+		.addSlider((slider) => mySlider = slider // implicit return without curlies
+		.setLimits(minTimeoutCams, 90, 1)
+		.setValue(this.plugin.settings.editTimeoutMilliseconds / 1000)
+		.onChange(async (value) => {
+			this.plugin.settings.editTimeoutMilliseconds = value * 1000;
+			myText.setValue(value.toString());
+			await this.plugin.saveSettings();
+		})
+		.setDynamicTooltip(),
+		)
+		.addText((text) => {
+				myText = text
+				.setPlaceholder("50")
+				.setValue((this.plugin.settings.editTimeoutMilliseconds/1000).toString(),)
+				.onChange(async (value) => {
+					const numericValue = parseInt(value, 10);
+					this.plugin.settings.editTimeoutMilliseconds = numericValue * 1000;
+					mySlider.setValue(numericValue);
+					await this.plugin.saveSettings();
+				})
+				// myText.inputEl.style.width = "4rem"; // because of the explicit return it's acting on the text element
+				// myText.inputEl.style.textAlign = "center";
+		});
+			
 
 		// #endregion
 
+
 		// #region status bar
-
 		containerEl.createEl("h1", { text: "Status bar" });
-		containerEl.createEl("p", {
-			text: "Displays clock in the status bar",
-		});
+		containerEl.createEl("p", { text: "Display symbols in the status bar" });
         containerEl.createEl("h2", { text: "🕰️ Clock" });
-		new Setting(containerEl)
-			.setName("Enable emojis")
-			.setDesc("Show emojis in the status bar?")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showEmojiStatusBar)
-					.onChange(async (newValue) => {
-						this.plugin.settings.showEmojiStatusBar = newValue;
-						await this.plugin.saveSettings();
-						await this.display();
-					}),
-			);
 
 		new Setting(containerEl)
-			.setName("Enable status bar clock")
+			.setName("Enable clock")
 			.setDesc(
 				"Show clock on the status bar? This setting requires restart of the plugin.",
 			)
@@ -164,23 +195,24 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						}),
 				);
 
-			new Setting(containerEl)
-				.setName("Update interval")
-				.setDesc(
-					"In milliseconds. Restart plugin for this setting to take effect.",
-				)
-				.addText((text) =>
-					text
-						.setPlaceholder("1000")
-						.setValue(
-							this.plugin.settings.updateIntervalMilliseconds,
-						)
-						.onChange(async (value) => {
-							this.plugin.settings.updateIntervalMilliseconds =
-								value;
-							await this.plugin.saveSettings();
-						}),
-				);
+				// TODO: delete
+			// new Setting(containerEl)
+			// 	.setName("Update interval")
+			// 	.setDesc(
+			// 		"In milliseconds. Restart plugin for this setting to take effect.",
+			// 	)
+			// 	.addText((text) =>
+			// 		text
+			// 			.setPlaceholder("1000")
+			// 			.setValue(
+			// 				this.plugin.settings.updateIntervalMilliseconds,
+			// 			)
+			// 			.onChange(async (value) => {
+			// 				this.plugin.settings.updateIntervalMilliseconds =
+			// 					value;
+			// 				await this.plugin.saveSettings();
+			// 			}),
+			// 	);
 
 			new Setting(containerEl)
 				.setName("UTC timezone")
@@ -195,33 +227,71 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 				);
 		}
 
+		containerEl.createEl("h2", { text: "✏ Typing indicator" });	
+		new Setting(containerEl)
+			.setName("Enable typing indicator")
+			.setDesc("Show typing indicator in the status bar? This setting requires restart of the plugin.")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableEditStatus)
+					.onChange(async (newValue) => {
+						this.plugin.settings.enableEditStatus = newValue;
+						await this.plugin.saveSettings();
+						await this.display();
+					}),
+			);
+
+		if (this.plugin.settings.enableEditStatus === true) {
+			new Setting(containerEl.createDiv({cls: "statusBarTypingIndicator"}))
+				.setName("Icon for tracking active/inactive")
+				.addText((text) =>
+					text
+						.setPlaceholder(this.plugin.settings.editIndicatorActive)
+						.setValue(this.plugin.settings.editIndicatorActive)
+						.onChange(async (value) => {
+							this.plugin.settings.editIndicatorActive = value;
+							await this.plugin.saveSettings();
+						}),
+				)
+				.addText((text) =>
+					text
+						.setPlaceholder("Your moj")
+						.setValue(this.plugin.settings.editIndicatorInactive)
+						.onChange(async (value) => {
+							this.plugin.settings.editIndicatorInactive = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
 		// #endregion
 
-		// #region keys
 
+		// #region keys
 		containerEl.createEl("h1", { text: "Frontmatter" });
 		containerEl.createEl("p", {
 			text: "Handles timestamp keys in frontmatter.",
 		});
 
 		// #region updated_at key
-
 		containerEl.createEl("h2", { text: "🔑 Modified timestamp" });
+		containerEl.createEl("p", {
+			text: "Track the last time a note was edited.",
+		});
 
 		new Setting(containerEl)
-			.setName("Enable update of the modified key")
+			.setName("Enable update of the modified key") // TODO: only update after a certain amount has passed? Otherwise pretty useless depending on what triggers the tracking. I think mouse doesn't!
 			.setDesc("")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.enableModifiedKeyUpdate)
+					.setValue(this.plugin.settings.enableModifiedKey)
 					.onChange(async (newValue) => {
-						this.plugin.settings.enableModifiedKeyUpdate = newValue;
+						this.plugin.settings.enableModifiedKey = newValue;
 						await this.plugin.saveSettings();
 						await this.display();
 					}),
 			);
 
-		if (this.plugin.settings.enableModifiedKeyUpdate === true) {
+		if (this.plugin.settings.enableModifiedKey === true) {
 			new Setting(containerEl)
 				.setName("Modified key name")
 				.setDesc(
@@ -249,49 +319,11 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 						}),
 				);
-
-			
-				let mySlider : SliderComponent;
-				let myText: TextComponent;
-				let minValue = 1
-				if (this.plugin.settings.useCustomFrontmatterHandlingSolution === false) {
-					minValue = 10;
-				}	
-				new Setting(containerEl)
-					// .setName("Interval between updates")
-					.setName(`Editing Timeout for ${this.plugin.settings.useCustomFrontmatterHandlingSolution === false ? "BOMS" : "CAMS"}`)
-					.setDesc("Timeout in seconds to stop counting. Also reflected in the status bar. Affects all update frequencies. IF DEFAULT IS ACTIVE THEN > 10, OTHERWISE >1!!! ENFORECE! Also preview on slider wrong.")
-					.addSlider((slider) =>
-						mySlider = slider
-							.setLimits(1, 90, 1)
-							.setValue(
-								this.plugin.settings.editTimeoutMilliseconds,
-							)
-							.onChange(async (value) => {
-								this.plugin.settings.editTimeoutMilliseconds = value * 1000;
-								myText.setValue(value.toString());
-								await this.plugin.saveSettings();
-							})
-							.setDynamicTooltip(),
-					)
-					.addText((text) =>
-						myText = text
-							.setPlaceholder("10020")
-							.setValue(
-								this.plugin.settings.editTimeoutMilliseconds.toString(),
-							)
-							.onChange(async (value) => {
-								const numericValue = parseInt(value, 10);
-								this.plugin.settings.editTimeoutMilliseconds = numericValue * 1000;
-								mySlider.setValue(numericValue);
-								await this.plugin.saveSettings();
-							}))
 		}
-
 		// #endregion
 
-		// #region edited_duration key
 
+		// #region edited_duration key
 		containerEl.createEl("h2", { text: "🔑 Edited duration" });
 		containerEl.createEl("p", {
 			text: "Track for how long you have been editing a note.",
@@ -340,36 +372,37 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						}),
 				);
 
-			const descA = document.createDocumentFragment();
-			descA.append(
-				"The portion of time you are not typing when editing a note. Works best with custom frontmatter handling solution. ",
-				createEl("a", {
-					href: "https://github.com/DynamicPlayerSector/timethings/wiki/Calculating-your-non%E2%80%90typing-editing-percentage",
-					text: "How to calculate yours?",
-				}),
-			);
+				// TODO: DELETE
+			// const descA = document.createDocumentFragment();
+			// descA.append(
+			// 	"The portion of time you are not typing when editing a note. Works best with custom frontmatter handling solution. ",
+			// 	createEl("a", {
+			// 		href: "https://github.com/DynamicPlayerSector/timethings/wiki/Calculating-your-non%E2%80%90typing-editing-percentage",
+			// 		text: "How to calculate yours?",
+			// 	}),
+			// );
 
-			new Setting(containerEl)
-				.setName("Non-typing editing time percentage")
-				.setDesc(descA)
-				.addSlider((slider) =>
-					slider
-						.setLimits(0, 40, 2)
-						.setValue(
-							this.plugin.settings.nonTypingEditingTimePercentage,
-						)
-						.onChange(async (value) => {
-							this.plugin.settings.nonTypingEditingTimePercentage =
-								value;
-							await this.plugin.saveSettings();
-						})
-						.setDynamicTooltip(),
-				);
+			// new Setting(containerEl)
+			// 	.setName("Non-typing editing time percentage")
+			// 	.setDesc(descA)
+			// 	.addSlider((slider) =>
+			// 		slider
+			// 			.setLimits(0, 40, 2)
+			// 			.setValue(
+			// 				this.plugin.settings.nonTypingEditingTimePercentage,
+			// 			)
+			// 			.onChange(async (value) => {
+			// 				this.plugin.settings.nonTypingEditingTimePercentage =
+			// 					value;
+			// 				await this.plugin.saveSettings();
+			// 			})
+			// 			.setDynamicTooltip(),
+			// 	);
 		}
-
 		// #endregion
 
 		// #endregion
+
 
 		// #region danger zone
 
