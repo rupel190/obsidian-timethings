@@ -32,18 +32,26 @@ export default class TimeThings extends Plugin {
 	clockBar: HTMLElement; // # Required
 	editIndicatorBar: HTMLElement;
 	debugBar: HTMLElement;
+	
+	// Debounced functions
+	updateFrontmatter: (useCustomSolution: boolean, activeView: MarkdownView) => void;
+	resetEditing: () => void;
+	resetIcon: () => void;
+	activityIconActive : boolean = false; // Will match the editing timer of isEditing, but it's better to decouple these variables
+	// timeout: number;
 
-	//TODO: Still uses 2000 internally somewhere!
 	// Allows for dynamic retrieval whereas a value stored in a closure would be copied and subsequentially outdated
 	get timeout() {
 		let to = this.settings?.editTimeoutMilliseconds;
 		if(!to || isNaN(to) || to === undefined) {
 			console.log(`Timeout setting ${to} invalid, fallback!`);
-			to = 1300;
+			to = 1000;
 		}
 		console.log('Timeout fetched: ', to);
 		return to;
 	}
+
+	
 
 	//#region Load plugin
 	async onload() {
@@ -230,18 +238,6 @@ export default class TimeThings extends Plugin {
 	//region Editing tracking
 	// Run every x seconds starting from typing begin and update periodically
 	startTime: number | null;
-	updateEditedValue = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
-			if(this.startTime) {
-				this.updateMetadata(useCustomSolution, activeView);
-			}
-		}, this.timeout);
-
-	resetEditing = debounce(() => {
-		// Reset state
-		this.isDebugBuild && console.log('Editing halted!');
-		this.isEditing = false;
-		this.startTime = null;
-	}, this.timeout, true);
 
 	updateEditing(useCustomSolution: boolean, activeView: MarkdownView) {
 		// Save current time only once, regardless of repeated calls (flag)
@@ -250,7 +246,7 @@ export default class TimeThings extends Plugin {
 			this.startTime = moment.now();
 			this.isDebugBuild && console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
 		}
-		this.updateEditedValue(useCustomSolution, activeView);
+		this.updateFrontmatter(useCustomSolution, activeView);
 		this.resetEditing();
 	}
 
@@ -439,24 +435,13 @@ export default class TimeThings extends Plugin {
 	}
 
 	// Typing indicator
-	iconActive : boolean = false; // Will match the editing timer, but it's better to decouple these variables
-	// Inactive typing
-	// Because the method is stored in a variable, the variable in the closure,
-	// namely timeout is not stored by reference but internally duplicated.
-	// Using a getter decouples the method from the settings
-	resetIcon = debounce(() => {
-		console.log("immedaitely getter", this.timeout);
-		this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
-		this.iconActive = false;
-		this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.iconActive);
-	}, this.timeout, true);
 	
 	// Active typing icon
 	updateIcon() {
-		if(!this.iconActive) {
+		if(!this.activityIconActive) {
 			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
-			this.iconActive = true;
-			this.isDebugBuild && console.log('Activate typing icon, active: ', this.iconActive);
+			this.activityIconActive = true;
+			this.isDebugBuild && console.log('Activate typing icon, active: ', this.activityIconActive);
 		}
 		console.log("Timeout updateIcon()getter: ", this.timeout);
 		// console.log("Timeout updateIcon()settingsprop: ", this.settings.editTimeoutMilliseconds);
@@ -491,17 +476,43 @@ export default class TimeThings extends Plugin {
     // Don't worry about it
 	onunload() {}
 
-    // Don't worry about it
+	
 	async loadSettings() {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
 			await this.loadData(),
 		);
+
+		this.isDebugBuild && console.log("LOAD settings, timeout: ", this.timeout);
+		// Because the methods are stored in a variable, the values inside the closure will be stale.
+		// Reloading here keeps it fresh and decoupled from the settings file.
+		this.updateFrontmatter = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
+			if(this.startTime) {
+				this.updateMetadata(useCustomSolution, activeView);
+			}
+		}, this.timeout);
+				
+		this.resetIcon = debounce(() => {
+			// Inactive typing
+			console.log("immedaitely getter", this.timeout);
+			this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
+			this.activityIconActive = false;
+			this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.activityIconActive);
+		}, this.timeout, true);
+
+		this.resetEditing = debounce(() => {
+			// Reset state
+			this.isDebugBuild && console.log('Editing halted!');
+			this.isEditing = false;
+			this.startTime = null;
+		}, this.timeout, true);
 	}
 
     // Don't worry about it
 	async saveSettings() {
+		this.isDebugBuild && console.log("SAVE settings")
 		await this.saveData(this.settings);
+		await this.loadSettings();
 	}
 }
