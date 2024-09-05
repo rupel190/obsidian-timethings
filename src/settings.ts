@@ -2,67 +2,51 @@ import { App, PluginSettingTab, Setting, SliderComponent, TextComponent } from "
 import TimeThings from "./main";
 
 export interface TimeThingsSettings {
-    //CAMS
+    //CAMS/BOMS
 	useCustomFrontmatterHandlingSolution: boolean;
+	typingTimeoutMilliseconds: number;
 
     //CLOCK
 	clockFormat: string;
-	updateIntervalMilliseconds: string;
 	enableClock: boolean;
 	isUTC: boolean;
-
+	
     //MODIFIED KEY
 	enableModifiedKey: boolean;
 	modifiedKeyName: string;
 	modifiedKeyFormat: string;
-    //BOMS
-	updateIntervalFrontmatterMinutes: number;
-
+	
     //DURATION KEY
 	enableEditDurationKey: boolean;
 	editDurationKeyName: string;
 	editDurationKeyFormat: string;
-	nonTypingEditingTimePercentage: number;
-	editTimeoutMilliseconds: number;
+	
+	// EDIT INDICATOR
 	enableEditStatus: boolean;
 	editIndicatorActive: string;
 	editIndicatorInactive: string;
-
-	enableSwitch: boolean;
-	switchKey: string;
-	switchKeyValue: string;
-    
 }
 
 export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	useCustomFrontmatterHandlingSolution: false,
+	typingTimeoutMilliseconds: 3000,
 
 	clockFormat: "hh:mm A",
-	updateIntervalMilliseconds: "1000",
 	enableClock: true,
 	isUTC: false,
-
+	
 	modifiedKeyName: "updated_at",
 	modifiedKeyFormat: "YYYY-MM-DD[T]HH:mm:ss.SSSZ",
 	enableModifiedKey: true,
-
+	
 	editDurationKeyName: "edited_seconds",
 	editDurationKeyFormat: "HH:mm:ss",
 	enableEditDurationKey: true,
-	editTimeoutMilliseconds: 3000,
+	
+	// EDIT INDICATOR
 	enableEditStatus: true,
 	editIndicatorActive: "✏🔵",
 	editIndicatorInactive: "✋🔴",
-
-	updateIntervalFrontmatterMinutes: 1,
-
-	nonTypingEditingTimePercentage: 22,
-
-	enableSwitch: false,
-	switchKey: "timethings.switch",
-	switchKeyValue: "true",
-
-
 };
 
 export class TimeThingsSettingsTab extends PluginSettingTab {
@@ -119,10 +103,10 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 							description += " Switch to default frontmatter solution for values <10s.";
 							console.log(mySlider.getValue());
 							mySlider.setLimits(minTimeoutBoms, 90, 1);
-							if(this.plugin.settings.editTimeoutMilliseconds < minTimeoutBoms * 1000) {
-								this.plugin.settings.editTimeoutMilliseconds = minTimeoutBoms * 1000;
+							if(this.plugin.settings.typingTimeoutMilliseconds < minTimeoutBoms * 1000) {
+								this.plugin.settings.typingTimeoutMilliseconds = minTimeoutBoms * 1000;
 								myText.setValue(minTimeoutBoms.toString());
-								console.log("Bump BOMS timeout", this.plugin.settings.editTimeoutMilliseconds);
+								console.log("Bump BOMS timeout", this.plugin.settings.typingTimeoutMilliseconds);
 							}
 						}
 						await this.plugin.saveSettings();
@@ -134,9 +118,9 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		.setDesc(description)
 		.addSlider((slider) => mySlider = slider // implicit return without curlies
 		.setLimits(minTimeoutCams, 90, 1)
-		.setValue(this.plugin.settings.editTimeoutMilliseconds / 1000)
+		.setValue(this.plugin.settings.typingTimeoutMilliseconds / 1000)
 		.onChange(async (value) => {
-			this.plugin.settings.editTimeoutMilliseconds = value * 1000;
+			this.plugin.settings.typingTimeoutMilliseconds = value * 1000;
 			myText.setValue(value.toString());
 			await this.plugin.saveSettings();
 		})
@@ -145,10 +129,10 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		.addText((text) => {
 				myText = text
 				.setPlaceholder("50")
-				.setValue((this.plugin.settings.editTimeoutMilliseconds/1000).toString(),)
+				.setValue((this.plugin.settings.typingTimeoutMilliseconds/1000).toString(),)
 				.onChange(async (value) => {
 					const numericValue = parseInt(value, 10);
-					this.plugin.settings.editTimeoutMilliseconds = numericValue * 1000;
+					this.plugin.settings.typingTimeoutMilliseconds = numericValue * 1000;
 					mySlider.setValue(numericValue);
 					await this.plugin.saveSettings();
 				})

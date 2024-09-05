@@ -38,19 +38,7 @@ export default class TimeThings extends Plugin {
 	resetEditing: () => void;
 	resetIcon: () => void;
 	activityIconActive : boolean = false; // Will match the editing timer of isEditing, but it's better to decouple these variables
-	// timeout: number;
-
-	// Allows for dynamic retrieval whereas a value stored in a closure would be copied and subsequentially outdated
-	get timeout() {
-		let to = this.settings?.editTimeoutMilliseconds;
-		if(!to || isNaN(to) || to === undefined) {
-			console.log(`Timeout setting ${to} invalid, fallback!`);
-			to = 1000;
-		}
-		console.log('Timeout fetched: ', to);
-		return to;
-	}
-
+	timeout: number;
 	
 
 	//#region Load plugin
@@ -296,12 +284,12 @@ export default class TimeThings extends Plugin {
 	 	this.isDebugBuild && console.log('--- User activity! ---');
 		console.log('Timeout: ', this.timeout);
         if (updateStatusBar) {
-			console.log("Update status bar, timeout: ", this.timeout);
+			this.isDebugBuild && console.log("Update status bar, timeout: ", this.timeout);
 			this.updateIcon();
         }
 		if (updateMetadata) {
 			// Update metadata using either BOMS or CAMS
-			console.log("Update metadata, timeout: ", this.timeout);
+			this.isDebugBuild && console.log("Update metadata, timeout: ", this.timeout);
 			this.updateEditing(useCustomSolution, activeView);
 		}
 	}
@@ -349,7 +337,7 @@ export default class TimeThings extends Plugin {
 
 				if (
 					updateKeyValue.add(
-						this.settings.updateIntervalFrontmatterMinutes,
+						this.timeout,
 						"minutes",
 					) > dateNow
 				) {
@@ -435,17 +423,12 @@ export default class TimeThings extends Plugin {
 	}
 
 	// Typing indicator
-	
-	// Active typing icon
 	updateIcon() {
 		if(!this.activityIconActive) {
 			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
 			this.activityIconActive = true;
 			this.isDebugBuild && console.log('Activate typing icon, active: ', this.activityIconActive);
 		}
-		console.log("Timeout updateIcon()getter: ", this.timeout);
-		// console.log("Timeout updateIcon()settingsprop: ", this.settings.editTimeoutMilliseconds);
-
 		this.resetIcon();
 	}
 
@@ -461,7 +444,7 @@ export default class TimeThings extends Plugin {
 			this.registerInterval(
 				window.setInterval(
 					this.updateClockBar.bind(this),
-					+this.settings.updateIntervalMilliseconds,
+					+ this.timeout,
 				),
 			);
 		}
@@ -484,6 +467,12 @@ export default class TimeThings extends Plugin {
 			await this.loadData(),
 		);
 
+		this.timeout = this.settings?.typingTimeoutMilliseconds;
+		if(!this.timeout || isNaN(this.timeout) || this.timeout === undefined) {
+			console.log(`Timeout setting ${this.timeout} invalid, fallback!`);
+			this.timeout = 3000;
+		}
+
 		this.isDebugBuild && console.log("LOAD settings, timeout: ", this.timeout);
 		// Because the methods are stored in a variable, the values inside the closure will be stale.
 		// Reloading here keeps it fresh and decoupled from the settings file.
@@ -495,7 +484,6 @@ export default class TimeThings extends Plugin {
 				
 		this.resetIcon = debounce(() => {
 			// Inactive typing
-			console.log("immedaitely getter", this.timeout);
 			this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
 			this.activityIconActive = false;
 			this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.activityIconActive);
