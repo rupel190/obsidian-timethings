@@ -51,8 +51,8 @@ export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	enableEditDurationKey: true,
 	editTimeoutMilliseconds: 3000,
 	enableEditStatus: true,
-	editIndicatorActive: "✋🔴",
-	editIndicatorInactive: "✏🔵",
+	editIndicatorActive: "✏🔵",
+	editIndicatorInactive: "✋🔴",
 
 	updateIntervalFrontmatterMinutes: 1,
 
@@ -243,10 +243,10 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 
 		if (this.plugin.settings.enableEditStatus === true) {
 			new Setting(containerEl.createDiv({cls: "statusBarTypingIndicator"}))
-				.setName("Icon for tracking active/inactive")
+				.setName("Icon for tracking inactive/active")
 				.addText((text) =>
 					text
-						.setPlaceholder(this.plugin.settings.editIndicatorActive)
+						.setPlaceholder("Inactive")
 						.setValue(this.plugin.settings.editIndicatorActive)
 						.onChange(async (value) => {
 							this.plugin.settings.editIndicatorActive = value;
@@ -255,7 +255,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 				)
 				.addText((text) =>
 					text
-						.setPlaceholder("Your moj")
+						.setPlaceholder("Active")
 						.setValue(this.plugin.settings.editIndicatorInactive)
 						.onChange(async (value) => {
 							this.plugin.settings.editIndicatorInactive = value;

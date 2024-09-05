@@ -27,12 +27,14 @@ import { allowedNodeEnvironmentFlags } from "process";
 export default class TimeThings extends Plugin {
 	settings: TimeThingsSettings;
 	isDebugBuild: boolean;
-	clockBar: HTMLElement; // # Required
-	editingBar: HTMLElement;
-	debugBar: HTMLElement;
-	editDurationBar: HTMLElement;
 	isEditing = false;
+	timeout = 1000; // Fallback in case settings doesn't immediately initialize
 
+	clockBar: HTMLElement; // # Required
+	editIndicatorBar: HTMLElement;
+	debugBar: HTMLElement;
+
+	//#region Load plugin
 	async onload() {
         // Add commands
         this.addCommand(
@@ -58,6 +60,7 @@ export default class TimeThings extends Plugin {
 
         // Load settings
 		await this.loadSettings();
+		this.timeout = this.settings.editTimeoutMilliseconds;
 
 		// Variables initialization
 		this.isDebugBuild = true; // for debugging purposes TODO: WELL IS IT OR IS IT NOT APPARENTLY ITS NOT IF THIS TEXT IS HERE!
@@ -73,9 +76,11 @@ export default class TimeThings extends Plugin {
 
         // Add a tab for settings
 		this.addSettingTab(new TimeThingsSettingsTab(this.app, this));
-
 	}
+	//#endregion
 
+
+	//#region UserActivity events
     registerMouseDownDOMEvent() {
 		this.registerDomEvent(document, "mousedown", (evt: MouseEvent) => {
 			// Prepare everything
@@ -178,6 +183,7 @@ export default class TimeThings extends Plugin {
 			}),
 		);
 	}
+	//#endregion
     
 
 	async activateMostEditedNotesView() {
@@ -205,37 +211,20 @@ export default class TimeThings extends Plugin {
 		}
 	}
 
+	// TODO: Use actual settings values and verify those are the used ones
+	// TODO: Verify CAMS/BOMS configured is correclty used
+	// TODO: Check how the updateModificationDate is used and maybe change if it's updating too easily. Should only be updated on Keypresses or maybe keypresses with an overall usage > 30 seconds. 
+	// 		(Hint: use old logic of aggregating change time)
 
-	timeout: number = 3000; // TODO: Into settings.ts
-	iconActive : boolean = false; // In a perfect world this matches the editing timer, but it's way simpler to decouple these variables
-	// Inactive typing
-	resetIcon = debounce(() => {
-		this.editingBar.setText(`✋🔴`); //TODO: settings.ts
-		this.iconActive = false;
-		this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.iconActive);
-	}, this.timeout, true);
-	
-	// Active typing icon
-	updateIcon() {
-		if(!this.iconActive) {
-			this.editingBar.setText(`✏🔵`);
-			this.iconActive = true;
-			this.isDebugBuild && console.log('Activate typing icon, active: ', this.iconActive);
-		}
-		this.resetIcon();
-	}
 
-	
-	// not just on the setting as BOMS apparently requires a min of 10s 
-	// -> TODO: Limit Timeout if BOMS is active! Provide slider + numberbox > 10 for BOMS, >1 for cams)
-	
+	//region Editing tracking
 	// Run every x seconds starting from typing begin and update periodically
 	startTime: number | null;
 	updateEditedValue = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
 			if(this.startTime) {
 				this.updateMetadata(useCustomSolution, activeView);
 			}
-		}, this.timeout, false);
+		}, this.timeout);
 
 	resetEditing = debounce(() => {
 		// Reset state
@@ -249,7 +238,7 @@ export default class TimeThings extends Plugin {
 		if(!this.isEditing) {
 			this.isEditing = true;
 			this.startTime = moment.now();
-			console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
+			this.isDebugBuild && console.log(`Editing ${this.isEditing} with startTime ${this.startTime}`);
 		}
 		this.updateEditedValue(useCustomSolution, activeView);
 		this.resetEditing();
@@ -257,6 +246,7 @@ export default class TimeThings extends Plugin {
 
 	updateMetadata (useCustomSolution: boolean, activeView: MarkdownView) {
 		let environment;
+
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
 		if (
 			useCustomSolution &&
@@ -265,7 +255,7 @@ export default class TimeThings extends Plugin {
 			// CAMS: Custom Asset Management System
 			this.updateModifiedPropertyEditor(environment);
 			if (this.settings.enableEditDurationKey) {
-				console.log('calling cams!');
+				this.isDebugBuild && console.log('calling cams!');
 				this.updateDurationPropertyEditor(environment);
 				
 			}
@@ -276,7 +266,7 @@ export default class TimeThings extends Plugin {
 			// BOMS: Build-in Object Management System
 			this.updateModifiedPropertyFrontmatter(environment);
 			if (this.settings.enableEditDurationKey) {
-				console.log('boms update');
+				this.isDebugBuild && console.log('boms update');
 				this.updateDurationPropertyFrontmatter(environment);
 			}
 		}
@@ -297,18 +287,22 @@ export default class TimeThings extends Plugin {
 		// Check if the file has a property that puts it into a blacklist
 		// Check if the file itself is in the blacklist
 		
-		console.log('--- User activity! ---');
-		
+	 	this.isDebugBuild && console.log('--- User activity! ---');
+		console.log('Timeout: ', this.timeout);
         if (updateStatusBar) {
+			console.log("Update status bar, timeout: ", this.timeout);
 			this.updateIcon();
         }
-		
-		// Update metadata using either BOMS or CAMS
 		if (updateMetadata) {
+			// Update metadata using either BOMS or CAMS
+			console.log("Update metadata, timeout: ", this.timeout);
 			this.updateEditing(useCustomSolution, activeView);
 		}
 	}
+	//#endregion
 
+
+	//#region Frontmatter update modified
 	// CAMS
     updateModifiedPropertyEditor(editor: Editor) {
 		const dateNow = moment();
@@ -365,6 +359,7 @@ export default class TimeThings extends Plugin {
 		);
 	}
 	
+	//#region Frontmatter update duration
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
 		// Fetch value
@@ -381,7 +376,7 @@ export default class TimeThings extends Plugin {
 			return;
 		}
 		// Increment & set
-		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
+		const incremented = moment.duration(value).add(this.settings.editTimeoutMilliseconds, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
 		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
 		CAMS.setValue(
 			editor,
@@ -408,14 +403,8 @@ export default class TimeThings extends Plugin {
 					this.isDebugBuild && console.log("Wrong format for edit_duration property");
 					return;
 				}
-
-				// TODO: Do this right in the settings. Maybe the date could also be validated directly in the settings?
-				if(this.timeout < 10000) {
-					console.log('Invalid timeout for BOMS, reset to 10 seconds.');
-					this.timeout = 10000;
-				}
 				// Increment
-				const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, {trim: false});
+				const incremented = moment.duration(value).add(this.settings.editTimeoutMilliseconds, 'milliseconds').format(userDateFormat, {trim: false});
 				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`, 0);
                 BOMS.setValue(
                     frontmatter,
@@ -425,8 +414,10 @@ export default class TimeThings extends Plugin {
             },
         );
     }
+	//#endregion
 
-	
+
+	//#region Status bar
     // Don't worry about it
 	updateClockBar() {
 		const dateNow = moment();
@@ -435,6 +426,29 @@ export default class TimeThings extends Plugin {
 		const dateChosen = this.settings.isUTC ? dateUTC : dateNow;
 		const dateFormatted = dateChosen.format(this.settings.clockFormat);
 		const emoji = timeUtils.momentToClockEmoji(dateChosen);
+	}
+
+	// Typing indicator
+	iconActive : boolean = false; // Will match the editing timer, but it's better to decouple these variables
+	// Inactive typing
+	resetIcon = debounce(() => {
+		console.log("immedaitely", this.timeout);
+		this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
+		this.iconActive = false;
+		this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.iconActive);
+	}, this.timeout, true);
+	
+	// Active typing icon
+	updateIcon() {
+		if(!this.iconActive) {
+			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
+			this.iconActive = true;
+			this.isDebugBuild && console.log('Activate typing icon, active: ', this.iconActive);
+		}
+		console.log("Timeout updateIcon(): ", this.timeout);
+		console.log("Timeout updateIcon()2: ", this.settings.editTimeoutMilliseconds);
+
+		this.resetIcon();
 	}
 
     // Called on OnLoad, adds status bar
@@ -454,11 +468,12 @@ export default class TimeThings extends Plugin {
 			);
 		}
 		if (this.settings.enableEditStatus) {
-			this.editingBar = this.addStatusBarItem();
-			this.editingBar.setText(this.settings.editIndicatorActive);
+			this.editIndicatorBar = this.addStatusBarItem();
+			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
 		}
-
 	}
+	//#endregion
+
 
     // Don't worry about it
 	onunload() {}
