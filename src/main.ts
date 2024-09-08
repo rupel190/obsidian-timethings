@@ -6,8 +6,8 @@ import {
 	TFile,
 	Notice,
 	debounce,
+	moment
 } from "obsidian";
-import { moment, Debouncer } from "obsidian";
 import {
 	MostEditedView,
 	VIEW_TYPE_MOST_EDITED as VIEW_TYPE_MOST_EDITED,
@@ -27,8 +27,14 @@ import { allowedNodeEnvironmentFlags } from "process";
 export default class TimeThings extends Plugin {
 	settings: TimeThingsSettings;
 	isDebugBuild: boolean;
-	isEditing = false;
 
+	// Edit tracking
+	isEditing = false; // Not a lock but used for tracking (Status bar)
+	startTime: number | null; // How long was isEditing active
+	activityIconActive : boolean = false; // Will match the editing timer of isEditing, but it's better to decouple these variables
+	timeout: number; // Loaded from settings, timeout for tracking and periodic saving
+
+	// Status bar
 	clockBar: HTMLElement; // # Required
 	editIndicatorBar: HTMLElement;
 	debugBar: HTMLElement;
@@ -37,8 +43,7 @@ export default class TimeThings extends Plugin {
 	updateFrontmatter: (useCustomSolution: boolean, activeView: MarkdownView) => void;
 	resetEditing: () => void;
 	resetIcon: () => void;
-	activityIconActive : boolean = false; // Will match the editing timer of isEditing, but it's better to decouple these variables
-	timeout: number;
+
 	
 
 	//#region Load plugin
@@ -99,7 +104,6 @@ export default class TimeThings extends Plugin {
 			if (editor.hasFocus() === false) {
 				return;
 			}
-
 			this.onUserActivity(true, activeView, { updateMetadata: false, updateStatusBar: true });
 		});
 	}
@@ -183,7 +187,6 @@ export default class TimeThings extends Plugin {
 				if (
 					this.settings.useCustomFrontmatterHandlingSolution === false
 				) {
-					console.log('this2 ');
 					this.onUserActivity(false, activeView);
 				}
 			}),
@@ -217,15 +220,12 @@ export default class TimeThings extends Plugin {
 		}
 	}
 
-	// TODO: Use actual settings values and verify those are the used ones
-	// TODO: Verify CAMS/BOMS configured is correclty used
-	// TODO: Check how the updateModificationDate is used and maybe change if it's updating too easily. Should only be updated on Keypresses or maybe keypresses with an overall usage > 30 seconds. 
+	// TODO: Check how the updateModificationDate is used and maybe change if it's updating too easily.
+	// Should only be updated on Keypresses or maybe keypresses with an overall usage > 30 seconds. 
 	// 		(Hint: use old logic of aggregating change time)
 
 
 	//region Editing tracking
-	// Run every x seconds starting from typing begin and update periodically
-	startTime: number | null;
 
 	updateEditing(useCustomSolution: boolean, activeView: MarkdownView) {
 		// Save current time only once, regardless of repeated calls (flag)
@@ -238,29 +238,38 @@ export default class TimeThings extends Plugin {
 		this.resetEditing();
 	}
 
+	validEditDuration() : number | null {
+		const diffSeconds = (moment.now() - moment.duration(this.startTime).asMilliseconds()) / 1000;
+		return isNaN(diffSeconds) ? null : diffSeconds;
+	}
+
 	updateMetadata (useCustomSolution: boolean, activeView: MarkdownView) {
 		let environment;
 
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
+		const editDiff = this.validEditDuration()
 		if (
 			useCustomSolution &&
 			environment instanceof Editor
 		) {
 			// CAMS: Custom Asset Management System
-			this.updateModifiedPropertyEditor(environment);
+			if(editDiff !== null && editDiff >= 4) { // TODO: Add setting
+				this.isDebugBuild && console.log(`Threshold reached with ${editDiff}, update modified property!`)
+				this.updateModifiedPropertyEditor(environment);
+			}
 			if (this.settings.enableEditDurationKey) {
-				this.isDebugBuild && console.log('calling cams!');
 				this.updateDurationPropertyEditor(environment);
-				
 			}
 		} else if (
 			!useCustomSolution &&
 			environment instanceof TFile
 		) {
 			// BOMS: Build-in Object Management System
-			this.updateModifiedPropertyFrontmatter(environment);
+			if(editDiff !== null && editDiff >= 10) { // TODO: Add setting
+				this.isDebugBuild && console.log(`Threshold reached with ${editDiff}, update modified property!`)
+				this.updateModifiedPropertyFrontmatter(environment);
+			}
 			if (this.settings.enableEditDurationKey) {
-				this.isDebugBuild && console.log('boms update');
 				this.updateDurationPropertyFrontmatter(environment);
 			}
 		}
@@ -281,15 +290,14 @@ export default class TimeThings extends Plugin {
 		// Check if the file has a property that puts it into a blacklist
 		// Check if the file itself is in the blacklist
 		
-	 	this.isDebugBuild && console.log('--- User activity! ---');
-		console.log('Timeout: ', this.timeout);
         if (updateStatusBar) {
-			this.isDebugBuild && console.log("Update status bar, timeout: ", this.timeout);
-			this.updateIcon();
+			// this.isDebugBuild && console.log('--- Update status bar ---');
+			// this.isDebugBuild && console.log("Update status bar, timeout: ", this.timeout);
         }
 		if (updateMetadata) {
 			// Update metadata using either BOMS or CAMS
-			this.isDebugBuild && console.log("Update metadata, timeout: ", this.timeout);
+			// this.isDebugBuild && console.log("Update metadata, timeout: ", this.timeout);
+			this.updateIcon();
 			this.updateEditing(useCustomSolution, activeView);
 		}
 	}
@@ -297,26 +305,12 @@ export default class TimeThings extends Plugin {
 
 
 	//#region Frontmatter update modified
+
 	// CAMS
     updateModifiedPropertyEditor(editor: Editor) {
-		const dateNow = moment();
-		const userDateFormat = this.settings.modifiedKeyFormat;
-		const dateFormatted = dateNow.format(userDateFormat);
-
+		const userDateFormat = this.settings.modifiedKeyFormat; // Target format. Existing format unknown and irrelevant.
 		const userModifiedKeyName = this.settings.modifiedKeyName;
-		const valueLineNumber = CAMS.getLine(editor, userModifiedKeyName);
-
-		if (typeof valueLineNumber !== "number") {
-			this.isDebugBuild && console.log("Couldn't get the line number of last_modified property");
-			return;
-		}
-		const value = editor.getLine(valueLineNumber).split(/:(.*)/s)[1].trim();
-		if (moment(value, userDateFormat, true).isValid() === false) {
-            // Little safecheck in place to reduce chance of bugs
-            this.isDebugBuild && console.log("Wrong format of last_modified property");
-			return;
-		}
-        // this.setValue(true, editor, userModifiedKeyName, dateFormatted,);
+		const dateFormatted = moment().format(userDateFormat);
 		CAMS.setValue(editor, userModifiedKeyName, dateFormatted);
 	} 
 
@@ -354,15 +348,31 @@ export default class TimeThings extends Plugin {
 	}
 	
 	//#region Frontmatter update duration
+
+	
+	/* Date updating is delicate: Moment.js validity check might check an updated setting
+		against a pre-existing date and would return false. So it would never act on old documents.
+		Instead: Check existing date for general validity. Add diff. Check if the new format is valid and display as such.
+	*/ 
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
+
+		
+
+		// if(!moment(value).isValid()) {
+		// 	this.isDebugBuild && console.log("Wrong format of updated_at property!");
+		// 	return;
+		// }
+
+
+
 		// Fetch value
 		let fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
 		if(fieldLine === undefined) {
 			console.log("Undefined value for duration property");
 			fieldLine = 0;
 		}
-		// Parse & check validity
+		// Parse & check validity TODO: Doesn't make sense because the format might change and we're checking enw format against existing frontmatter format
 		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
 		const userDateFormat = this.settings.editDurationKeyFormat;
 		if(moment(value, userDateFormat, true).isValid() === false) {
@@ -427,7 +437,7 @@ export default class TimeThings extends Plugin {
 		if(!this.activityIconActive) {
 			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
 			this.activityIconActive = true;
-			this.isDebugBuild && console.log('Activate typing icon, active: ', this.activityIconActive);
+			this.isDebugBuild && console.log('Activate typing icon, active: ', this.activityIconActive, this.settings.editIndicatorActive);
 		}
 		this.resetIcon();
 	}
@@ -448,7 +458,7 @@ export default class TimeThings extends Plugin {
 				),
 			);
 		}
-		if (this.settings.enableEditStatus) {
+		if (this.settings.enableEditIndicator) {
 			this.editIndicatorBar = this.addStatusBarItem();
 			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
 		}
@@ -470,7 +480,7 @@ export default class TimeThings extends Plugin {
 		this.timeout = this.settings?.typingTimeoutMilliseconds;
 		if(!this.timeout || isNaN(this.timeout) || this.timeout === undefined) {
 			console.log(`Timeout setting ${this.timeout} invalid, fallback!`);
-			this.timeout = 3000;
+			this.timeout = 10000;
 		}
 
 		this.isDebugBuild && console.log("LOAD settings, timeout: ", this.timeout);
@@ -485,13 +495,17 @@ export default class TimeThings extends Plugin {
 		this.resetIcon = debounce(() => {
 			// Inactive typing
 			this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
+			console.log('this is inactive: ', this.settings.editIndicatorInactive);
+			console.log('this is active: ', this.settings.editIndicatorActive);
+
 			this.activityIconActive = false;
 			this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.activityIconActive);
 		}, this.timeout, true);
 
 		this.resetEditing = debounce(() => {
 			// Reset state
-			this.isDebugBuild && console.log('Editing halted!');
+			let diff: number = moment.now() - moment.duration(this.startTime).asMilliseconds();
+			this.isDebugBuild && console.log(`Editing halted after ${diff/1000}s.`);
 			this.isEditing = false;
 			this.startTime = null;
 		}, this.timeout, true);

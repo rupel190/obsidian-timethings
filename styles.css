@@ -39,3 +39,8 @@ If your plugin does not need CSS, delete this file.
     text-align: center;
     width: 3rem;
 }
+
+.setting-item .setting-item-control .invalid-format {
+    border-color: orangered;
+}
+
