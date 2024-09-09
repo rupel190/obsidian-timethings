@@ -250,10 +250,7 @@ export default class TimeThings extends Plugin {
 		const editDiff = this.validEditDuration()
 		const modificationThreshold = this.settings.modifiedThreshold/1000;
 
-		if (
-			useCustomSolution &&
-			environment instanceof Editor
-		) {
+		if (useCustomSolution && environment instanceof Editor) {
 			// CAMS: Custom Asset Management System
 			console.log("Calling CAMS handler");
 			if(editDiff !== null && editDiff >= modificationThreshold) {
@@ -263,10 +260,7 @@ export default class TimeThings extends Plugin {
 			if (this.settings.enableEditDurationKey) {
 				this.updateDurationPropertyCAMS(environment);
 			}
-		} else if (
-			!useCustomSolution &&
-			environment instanceof TFile
-		) {			
+		} else if (!useCustomSolution && environment instanceof TFile) {			
 			// BOMS: Build-in Object Management System
 			console.log("Calling BOMS handler");
 			if(editDiff !== null && editDiff >= modificationThreshold) {
@@ -315,6 +309,13 @@ export default class TimeThings extends Plugin {
 		const userDateFormat = this.settings.modifiedKeyFormat; // Target format. Existing format unknown and irrelevant.
 		const userModifiedKeyName = this.settings.modifiedKeyName;
 		const dateFormatted = moment().format(userDateFormat);
+
+		const fetched = CAMS.getLine(editor, this.settings.modifiedKeyName)
+		if(fetched === undefined) {
+			// TODO: Initialize somehow, cause it's not crfeated by using CAMS!
+			console.log("!!!Attempt to init frontmatter");
+			BOMS.setValue(editor, userModifiedKeyName, dateFormatted);
+		}
 		CAMS.setValue(editor, userModifiedKeyName, dateFormatted);
 	} 
 
@@ -326,7 +327,7 @@ export default class TimeThings extends Plugin {
 			(frontmatter) => {
 				const dateFormatted = moment().format(this.settings.modifiedKeyFormat);
 				// BOMS creates key if it doesn't exist
-				BOMS.setValue(frontmatter,this.settings.modifiedKeyName, dateFormatted);
+				BOMS.setValue(frontmatter, this.settings.modifiedKeyName, dateFormatted);
 			},
 		);
 	}
@@ -368,7 +369,6 @@ export default class TimeThings extends Plugin {
 		Instead: Check existing duration for general validity. Increment. Display. (Format is validated in settings)
 	*/ 
     async updateDurationPropertyBOMS(file: TFile) {
-		
 		this.isDebugBuild && console.log('*** BOMS: Update duration property! ***');
         // Slow update
         await this.app.fileManager.processFrontMatter(

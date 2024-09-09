@@ -91,9 +91,11 @@ export function setValue(editor: Editor, fieldPath: string, fieldValue: string,)
 	// The thing with this function is that it uses the format from settings to check against. I can make it as an argument that can be passed, or better yet, eradicate the check from the function to make it more atomic and place it somewhere else in the main code.
 	const fieldLine = getLine(editor, fieldPath);
 	if (fieldLine === undefined) {
+        console.log("!!!fieldline undefined"); // TODO: delete
 		return;
 	}
 	const initialLine = editor.getLine(fieldLine).split(":", 1);
 	const newLine = initialLine[0] + ": " + fieldValue;
+    console.log('!!!fieldline/newline', fieldLine, newLine);
 	editor.setLine(fieldLine, newLine);
 }
