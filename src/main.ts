@@ -316,6 +316,7 @@ export default class TimeThings extends Plugin {
 
 	// BOMS (Default)
     async updateModifiedPropertyFrontmatter(file: TFile) {
+		// TODO update
 		await this.app.fileManager.processFrontMatter(
 			file as TFile,
 			(frontmatter) => {
@@ -352,45 +353,54 @@ export default class TimeThings extends Plugin {
 	
 	/* Date updating is delicate: Moment.js validity check might check an updated setting
 		against a pre-existing date and would return false. So it would never act on old documents.
-		Instead: Check existing date for general validity. Add diff. Check if the new format is valid and display as such.
+		Instead: Check existing duration for general validity. Add diff. Check if the new format is valid and display as such.
 	*/ 
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
 
+		//TODO update
+
+		
+		// Fetch edit duration
+		const fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
+		const userDateFormat = this.settings.editDurationKeyFormat;
+		let newValue : any;
+
+		console.log("---------------------------")
+		console.log('frontmatter', CAMS.getLine(editor, this.settings.editDurationKeyName));
+		console.log('frontmatter2', CAMS.getLine(editor,  this.settings.editDurationKeyName))
 		
 
-		// if(!moment(value).isValid()) {
-		// 	this.isDebugBuild && console.log("Wrong format of updated_at property!");
-		// 	return;
-		// }
-
-
-
-		// Fetch value
-		let fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
+		console.log('key name: ', this.settings.editDurationKeyName);
+		console.log('cams prop', CAMS.getLine(editor, this.settings.editDurationKeyName));
+		console.log('editor fieldline', (CAMS.getLine(editor, this.settings.editDurationKeyName)));
+		
 		if(fieldLine === undefined) {
-			console.log("Undefined value for duration property");
-			fieldLine = 0;
+			console.log(`Undefined value for ${this.settings.editDurationKeyName}`);
+			newValue = moment.duration(0, "minutes").format(userDateFormat, { trim: false })
+			console.log('set value here');
+			
+			CAMS.setValue(editor, "welltest", newValue);
+
+		} else {
+			newValue = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
+			const test = moment(newValue, userDateFormat, true).isValid()
+			console.log("test vlaid? ", test)
 		}
-		// Parse & check validity TODO: Doesn't make sense because the format might change and we're checking enw format against existing frontmatter format
-		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
-		const userDateFormat = this.settings.editDurationKeyFormat;
-		if(moment(value, userDateFormat, true).isValid() === false) {
-			this.isDebugBuild && console.log("Wrong format or invalid value with edit_duration property");
-			return;
-		}
+
+		this.isDebugBuild && console.log(`Current edit duration ${newValue} and current/new formatter ${userDateFormat}`);
+
 		// Increment & set
-		const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
-		this.isDebugBuild && console.log(`Increment CAMS from ${value} to ${incremented}`);
-		CAMS.setValue(
-			editor,
-			this.settings.editDurationKeyName,
-			incremented.toString(),
-		);
+		const incremented = moment.duration(newValue).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
+		this.isDebugBuild && console.log(`Increment CAMS from ${newValue} to ${incremented}`);
+		CAMS.setValue(editor, this.settings.editDurationKeyName, incremented.toString());
 	}
 
 	// BOMS (Default)
     async updateDurationPropertyFrontmatter(file: TFile) {
+
+		// TODO update
+
         // Slow update
         await this.app.fileManager.processFrontMatter(
             file as TFile,
@@ -495,9 +505,6 @@ export default class TimeThings extends Plugin {
 		this.resetIcon = debounce(() => {
 			// Inactive typing
 			this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
-			console.log('this is inactive: ', this.settings.editIndicatorInactive);
-			console.log('this is active: ', this.settings.editIndicatorActive);
-
 			this.activityIconActive = false;
 			this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.activityIconActive);
 		}, this.timeout, true);

@@ -116,7 +116,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl.createDiv({cls: "textbox"}))
-		.setName(`Editing Timeout for ${this.plugin.settings.useCustomFrontmatterHandlingSolution === false ? "BOMS" : "CAMS"}`)
+		.setName("Editing Timeout")
 		.setDesc(description)
 		.addSlider((slider) => mySlider = slider // implicit return without curlies
 		.setLimits(minTimeoutCams, 90, 1)
@@ -172,9 +172,17 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 					text
 						.setPlaceholder("hh:mm A")
 						.setValue(this.plugin.settings.clockFormat)
-						.onChange(async (value) => {
-							this.plugin.settings.clockFormat = value;
-							await this.plugin.saveSettings();
+						.onChange(async (formatter) => {
+							// Validate formatter by using it
+							const formatTest = moment().format(formatter);
+							const valid = moment(formatTest, formatter).isValid();
+							if(!valid) {
+								text.inputEl.addClass('invalid-format');
+							} else {
+								text.inputEl.removeClass('invalid-format');
+								this.plugin.settings.clockFormat = formatter;
+								await this.plugin.saveSettings();
+							}
 						}),
 				);
 
@@ -279,7 +287,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						.setPlaceholder("YYYY-MM-DD[T]HH:mm:ss.SSSZ")
 						.setValue(this.plugin.settings.modifiedKeyFormat)
 						.onChange(async (formatter) => {
-							// Try formatting the current date
+							// Validate formatter by using it
 							const formatTest = moment().format(formatter);
 							const valid = moment(formatTest, formatter).isValid();
 							if(!valid) {
@@ -337,9 +345,17 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 					text
 						.setPlaceholder("HH:mm:ss.SSSZ")
 						.setValue(this.plugin.settings.editDurationKeyFormat)
-						.onChange(async (value) => {
-							this.plugin.settings.editDurationKeyFormat = value;
-							await this.plugin.saveSettings();
+						.onChange(async (formatter) => {
+							// Validate formatter by using it
+							const formatTest = moment().format(formatter);
+							const valid = moment(formatTest, formatter).isValid();
+							if(!valid) {
+								text.inputEl.addClass('invalid-format');
+							} else {
+								text.inputEl.removeClass('invalid-format');
+								this.plugin.settings.editDurationKeyFormat = formatter;
+								await this.plugin.saveSettings();
+							}
 						}),
 				);
 			}
