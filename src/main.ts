@@ -308,6 +308,9 @@ export default class TimeThings extends Plugin {
 
 	// CAMS
     updateModifiedPropertyEditor(editor: Editor) {
+		this.isDebugBuild && console.log('CAMS: Update modified property!');
+		// With the old solution updating frontmatter keys only worked on BOMS!
+		// todo: allow key changes
 		const userDateFormat = this.settings.modifiedKeyFormat; // Target format. Existing format unknown and irrelevant.
 		const userModifiedKeyName = this.settings.modifiedKeyName;
 		const dateFormatted = moment().format(userDateFormat);
@@ -316,34 +319,13 @@ export default class TimeThings extends Plugin {
 
 	// BOMS (Default)
     async updateModifiedPropertyFrontmatter(file: TFile) {
-		// TODO update
+		this.isDebugBuild && console.log('--- BOMS: Update modified property! ---');
 		await this.app.fileManager.processFrontMatter(
 			file as TFile,
 			(frontmatter) => {
-				const dateNow = moment();
-				const dateFormatted = dateNow.format(
-					this.settings.modifiedKeyFormat,
-				);
-
-				const updateKeyValue = moment(
-					BOMS.getValue(frontmatter, this.settings.modifiedKeyName),
-					this.settings.modifiedKeyFormat,
-				);
-
-				if (
-					updateKeyValue.add(
-						this.timeout,
-						"minutes",
-					) > dateNow
-				) {
-					return;
-				}
-
-				BOMS.setValue(
-					frontmatter,
-					this.settings.modifiedKeyName,
-					dateFormatted,
-				);
+				const dateFormatted = moment().format(this.settings.modifiedKeyFormat);
+				// BOMS creates key if it doesn't exist
+				BOMS.setValue(frontmatter,this.settings.modifiedKeyName, dateFormatted);
 			},
 		);
 	}
@@ -357,6 +339,8 @@ export default class TimeThings extends Plugin {
 	*/ 
 	// CAMS
 	async updateDurationPropertyEditor(editor: Editor) {
+		this.isDebugBuild && console.log('CAMS: Update duration property!');
+		// With the old solution updating frontmatter keys only worked on BOMS!
 
 		//TODO update
 
@@ -398,6 +382,7 @@ export default class TimeThings extends Plugin {
 
 	// BOMS (Default)
     async updateDurationPropertyFrontmatter(file: TFile) {
+		this.isDebugBuild && console.log('--- BOMS: Update duration property! ---');
 
 		// TODO update
 
