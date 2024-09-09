@@ -97,16 +97,21 @@ export default class TimeThings extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", (leaf) => {
 				// Prepare everything
-				const activeView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const useCustom : boolean = this.settings.useCustomFrontmatterHandlingSolution;
+				this.isDebugBuild && console.log(`Key down, use: ${useCustom ? "CAMS" : "BOMS"}`);
+
 				if (activeView === null) {
 					return;
 				}
-				const editor = activeView.editor;
-				if (editor.hasFocus() === false) {
-					return;
+
+				if(useCustom) {
+					const editor = activeView.editor;
+					if (editor.hasFocus() === false) {
+						return;
+					}
 				}
-				this.onUserActivity(true, activeView);
+				this.onUserActivity(useCustom, activeView);
 			}),
 		);
 	}
@@ -134,47 +139,46 @@ export default class TimeThings extends Plugin {
 				return;
 			}
 
-			this.isDebugBuild && console.log(`Key down: ${this.settings.useCustomFrontmatterHandlingSolution ? "CAMS" : "BOMS"}`);
-			if (this.settings.useCustomFrontmatterHandlingSolution === true) {
-				// Make sure the document is ready for edit
-				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (activeView === null) {
-					this.isDebugBuild && console.log("No active view");
-					return;
-				}
+			// Make sure the document is ready for edit
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			const useCustom : boolean = this.settings.useCustomFrontmatterHandlingSolution;
+			// this.isDebugBuild && console.log(`Key down, use: ${useCustom ? "CAMS" : "BOMS"}`);
+			
+			if (activeView === null) {
+				this.isDebugBuild && console.log("No active view");
+				return;
+			}
+
+			if (useCustom) {
 				const editor: Editor = activeView.editor;
 				if (editor.hasFocus() === false) {
 					this.isDebugBuild && console.log("No focus");
 					return;
-				}
-
-				// Update everything
-				this.onUserActivity(true, activeView);
-			} else {
-				console.log('well, just use boms?!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+				}			
 			}
+			this.onUserActivity(useCustom, activeView);
 		});
 	}
 
 	// BOMS
-	registerFileModificationEvent() {
-		// ! If BOMS is updated it triggers a new file modification event
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				// Make everything ready for edit
-				const activeView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (activeView === null) {
-					return;
-				}
-				console.log('filemod');
+	// registerFileModificationEvent() {
+	// 	// ! If BOMS is updated it triggers a new file modification event
+	// 	this.registerEvent(
+	// 		this.app.vault.on("modify", (file) => {
+	// 			// Make everything ready for edit
+	// 			const activeView =
+	// 				this.app.workspace.getActiveViewOfType(MarkdownView);
+	// 			if (activeView === null) {
+	// 				return;
+	// 			}
+	// 			console.log('filemod');
 
-				if (this.settings.useCustomFrontmatterHandlingSolution === false) {
-					this.onUserActivity(false, activeView);
-				}
-			}),
-		);
-	}
+	// 			if (this.settings.useCustomFrontmatterHandlingSolution === false) {
+	// 				this.onUserActivity(false, activeView);
+	// 			}
+	// 		}),
+	// 	);
+	// }
 
 	// NONE
 	registerMouseDownDOMEvent() {
@@ -221,10 +225,6 @@ export default class TimeThings extends Plugin {
 		}
 	}
 
-	// TODO: Check how the updateModificationDate is used and maybe change if it's updating too easily.
-	// Should only be updated on Keypresses or maybe keypresses with an overall usage > 30 seconds. 
-	// 		(Hint: use old logic of aggregating change time)
-
 
 	//region Editing tracking
 
@@ -235,7 +235,6 @@ export default class TimeThings extends Plugin {
 			this.startTime = moment.now();
 			this.isDebugBuild && console.log(`Editing ${this.isEditing} with startTime `, moment(this.startTime).format(this.settings.modifiedKeyFormat));
 		}
-		this.isDebugBuild && console.log(`updateEditing: ${useCustomSolution ? "CAMS" : "BOMS"}`);
 		this.updateFrontmatter(useCustomSolution, activeView);
 		this.resetEditing();
 	}
@@ -247,19 +246,18 @@ export default class TimeThings extends Plugin {
 
 	updateMetadata (useCustomSolution: boolean, activeView: MarkdownView) {
 		let environment;
-
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
-		console.log('updateMetadata custom setting: ', this.settings.useCustomFrontmatterHandlingSolution);
-		console.log('updateMetadata CUSTOM parameter from event: ' , useCustomSolution);
 		const editDiff = this.validEditDuration()
+		const modificationThreshold = this.settings.modifiedThreshold/1000;
+
 		if (
 			useCustomSolution &&
 			environment instanceof Editor
 		) {
 			// CAMS: Custom Asset Management System
 			console.log("Calling CAMS handler");
-			if(editDiff !== null && editDiff >= 4) { // TODO: Add setting
-				this.isDebugBuild && console.log(`Threshold reached with ${editDiff}, update modified property!`)
+			if(editDiff !== null && editDiff >= modificationThreshold) {
+				this.isDebugBuild && console.log(`Modified property threshold reached with ${editDiff}s, update property!`)
 				this.updateModifiedPropertyCAMS(environment);
 			}
 			if (this.settings.enableEditDurationKey) {
@@ -271,8 +269,8 @@ export default class TimeThings extends Plugin {
 		) {			
 			// BOMS: Build-in Object Management System
 			console.log("Calling BOMS handler");
-			if(editDiff !== null && editDiff >= 10) { // TODO: Add setting
-				this.isDebugBuild && console.log(`Threshold reached with ${editDiff}, update modified property!`)
+			if(editDiff !== null && editDiff >= modificationThreshold) {
+				this.isDebugBuild && console.log(`Modified property threshold reached with ${editDiff}s, update property!`)
 				this.updateModifiedPropertyBOMS(environment);
 			}
 			if (this.settings.enableEditDurationKey) {
@@ -281,8 +279,7 @@ export default class TimeThings extends Plugin {
 		}
 	}
 
-    // A function for reading and editing metadata realtime
-	// Gets called when a user changes a leaf, clicks a mouse, types in the editor, or modifies a file
+	// Called on typing
 	onUserActivity(
 		useCustomSolution: boolean,
 		activeView: MarkdownView,
@@ -298,7 +295,7 @@ export default class TimeThings extends Plugin {
 		
 		if (updateMetadata) {
 			// Update metadata using either BOMS or CAMS
-			this.isDebugBuild && console.log(`UserActivity: ${useCustomSolution ? "CAMS" : "BOMS"}, with timeout ${this.timeout}`);
+			// this.isDebugBuild && console.log(`UserActivity: ${useCustomSolution ? "CAMS" : "BOMS"}, with timeout ${this.timeout}`);
 			if(updateTypingIndicator) {
 				this.updateIcon();
 			}
@@ -312,7 +309,7 @@ export default class TimeThings extends Plugin {
 
 	// CAMS
     updateModifiedPropertyCAMS(editor: Editor) {
-		this.isDebugBuild && console.log('--- CAMS: Update modified property! ---');
+		this.isDebugBuild && console.log('*** CAMS: Update modified property! ***');
 		// With the old solution updating frontmatter keys only worked on BOMS!
 		// todo: allow key changes
 		const userDateFormat = this.settings.modifiedKeyFormat; // Target format. Existing format unknown and irrelevant.
@@ -323,7 +320,7 @@ export default class TimeThings extends Plugin {
 
 	// BOMS (Default)
     async updateModifiedPropertyBOMS(file: TFile) {
-		this.isDebugBuild && console.log('--- BOMS: Update modified property! ---');
+		this.isDebugBuild && console.log('*** BOMS: Update modified property! ***');
 		await this.app.fileManager.processFrontMatter(
 			file as TFile,
 			(frontmatter) => {
@@ -339,7 +336,7 @@ export default class TimeThings extends Plugin {
 	
 	// CAMS
 	async updateDurationPropertyCAMS(editor: Editor) {
-		this.isDebugBuild && console.log('--- CAMS: Update duration property! ---');
+		this.isDebugBuild && console.log('*** CAMS: Update duration property! ***');
 		// With the old solution updating frontmatter keys only worked on BOMS!
 
 		//TODO update
@@ -349,34 +346,19 @@ export default class TimeThings extends Plugin {
 		const fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
 		const userDateFormat = this.settings.editDurationKeyFormat;
 		let newValue : any;
-
-		console.log("---------------------------")
-		console.log('frontmatter', CAMS.getLine(editor, this.settings.editDurationKeyName));
-		console.log('frontmatter2', CAMS.getLine(editor,  this.settings.editDurationKeyName))
-		
-
-		console.log('key name: ', this.settings.editDurationKeyName);
-		console.log('cams prop', CAMS.getLine(editor, this.settings.editDurationKeyName));
-		console.log('editor fieldline', (CAMS.getLine(editor, this.settings.editDurationKeyName)));
 		
 		if(fieldLine === undefined) {
 			console.log(`Undefined value for ${this.settings.editDurationKeyName}`);
 			newValue = moment.duration(0, "minutes").format(userDateFormat, { trim: false })
-			console.log('set value here');
-			
-			CAMS.setValue(editor, "welltest", newValue);
-
 		} else {
 			newValue = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
-			const test = moment(newValue, userDateFormat, true).isValid()
-			console.log("test vlaid? ", test)
+			// const test = moment(newValue, userDateFormat, true).isValid()
 		}
-
 		this.isDebugBuild && console.log(`Current edit duration ${newValue} and current/new formatter ${userDateFormat}`);
 
 		// Increment & set
 		const incremented = moment.duration(newValue).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
-		this.isDebugBuild && console.log(`Increment CAMS from ${newValue} to ${incremented}`);
+		this.isDebugBuild && console.log(`Increment CAMS edit duration from ${newValue} to ${incremented}`);
 		CAMS.setValue(editor, this.settings.editDurationKeyName, incremented.toString());
 	}
 
@@ -387,7 +369,7 @@ export default class TimeThings extends Plugin {
 	*/ 
     async updateDurationPropertyBOMS(file: TFile) {
 		
-		this.isDebugBuild && console.log('--- BOMS: Update duration property! ---');
+		this.isDebugBuild && console.log('*** BOMS: Update duration property! ***');
         // Slow update
         await this.app.fileManager.processFrontMatter(
             file as TFile,
@@ -407,7 +389,7 @@ export default class TimeThings extends Plugin {
 				// Increment
 				const userDateFormat = this.settings.editDurationKeyFormat;
 				const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, {trim: false});
-				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`, 0);
+				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`);
                 BOMS.setValue(
                     frontmatter,
                     this.settings.editDurationKeyName,

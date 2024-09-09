@@ -16,6 +16,7 @@ export interface TimeThingsSettings {
 	enableModifiedKey: boolean;
 	modifiedKeyName: string;
 	modifiedKeyFormat: string;
+	modifiedThreshold: number; // todo: add settings field
 	
     //DURATION KEY
 	enableEditDurationKey: boolean;
@@ -39,6 +40,7 @@ export const DEFAULT_SETTINGS: TimeThingsSettings = {
 	modifiedKeyName: "updated_at",
 	modifiedKeyFormat: "YYYY-MM-DD[T]HH:mm:ss.SSSZ",
 	enableModifiedKey: true,
+	modifiedThreshold: 30000,
 	
 	editDurationKeyName: "edited_seconds",
 	editDurationKeyFormat: "HH:mm:ss",
@@ -81,8 +83,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		// #region custom frontmatter solution
 		let mySlider : SliderComponent;
 		let myText: TextComponent;
-		let description = "In seconds. Time to stop tracking after interaction has stopped. Value also used for saving interval. Textbox allows for higher values."
-		const minTimeoutBoms = 10;
+		const minTimeoutBoms = 10; // Not sure
 		const minTimeoutCams = 1;
 
 		new Setting(containerEl)
@@ -102,7 +103,6 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						} 
 						else {
 							// BOMS: Raise lower limit and bump if below
-							description += " Switch to default frontmatter solution for values <10s.";
 							// console.log("Slider lower limit: ", mySlider.getValue());
 							mySlider.setLimits(minTimeoutBoms, 90, 1);
 							if(this.plugin.settings.typingTimeoutMilliseconds < minTimeoutBoms * 1000) {
@@ -116,15 +116,25 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl.createDiv({cls: "textbox"}))
-		.setName("Editing Timeout")
-		.setDesc(description)
-		.addSlider((slider) => mySlider = slider // implicit return without curlies
-		.setLimits(minTimeoutBoms, 90, 1)
-		.setValue(this.plugin.settings.typingTimeoutMilliseconds / 1000)
-		.onChange(async (value) => {
-			this.plugin.settings.typingTimeoutMilliseconds = value * 1000;
-			myText.setValue(value.toString());
-			await this.plugin.saveSettings();
+			.setName("Editing Timeout")
+			.setDesc("In seconds. Time to stop tracking after interaction has stopped. Value also used for saving interval. Textbox allows for higher values.")
+			.addSlider((slider) => mySlider = slider // implicit return without curlies
+			.setLimits(minTimeoutBoms, 90, 1)
+			.setValue(this.plugin.settings.typingTimeoutMilliseconds / 1000)
+			.onChange(async (value) => {
+				myText.setValue(value.toString());
+				// Validity check including BOMS limit
+				const useCustom = this.plugin.settings.useCustomFrontmatterHandlingSolution;
+				if(
+					value < (useCustom? minTimeoutCams : minTimeoutBoms) 
+					|| isNaN(value)
+				) {
+					myText.inputEl.addClass('invalid-format');
+				} else {
+					myText.inputEl.removeClass('invalid-format');
+					this.plugin.settings.typingTimeoutMilliseconds = value * 1000;
+					await this.plugin.saveSettings();
+				}
 		})
 		.setDynamicTooltip(),
 		)
@@ -246,7 +256,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		containerEl.createEl("h1", { text: "Frontmatter" });
 		containerEl.createEl("p", { text: "Handles timestamp keys in frontmatter." });
 
-		// #region updated_at key
+		// #region frontmatter modification timestamp
 		containerEl.createEl("h2", { text: "🔑 Modified timestamp" });
 		containerEl.createEl("p", { text: "Track the last time a note was edited." });
 		
@@ -300,6 +310,32 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 							}
 						}),
 				)
+
+			let thresholdText: TextComponent;
+			new Setting(containerEl.createDiv({cls: "textbox"}))
+				.setName("Date refresh threshold")
+				.setDesc("Active typing duration that must be exceeded in one continuous period for the modification date to be updated. Will always be updated if lower than the editing timeout.")
+				.addSlider((slider) => slider // implicit return without curlies
+					.setLimits(0, 60, 1)
+					.setValue(this.plugin.settings.modifiedThreshold / 1000)
+					.onChange(async (value) => {
+						this.plugin.settings.modifiedThreshold = value * 1000;
+						thresholdText.setValue(value.toString());
+						await this.plugin.saveSettings();
+					})
+					.setDynamicTooltip(),
+				)
+				.addText((text) => {
+						thresholdText = text
+						.setPlaceholder("30")
+						.setValue((this.plugin.settings.modifiedThreshold/1000).toString(),)
+						.onChange(async (value) => {
+							const numericValue = parseInt(value, 10);
+							this.plugin.settings.modifiedThreshold = numericValue * 1000;
+							mySlider.setValue(numericValue);
+							await this.plugin.saveSettings();
+						})
+				});
 		}
 		// #endregion
 
