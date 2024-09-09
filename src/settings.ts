@@ -103,7 +103,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						else {
 							// BOMS: Raise lower limit and bump if below
 							description += " Switch to default frontmatter solution for values <10s.";
-							console.log(mySlider.getValue());
+							// console.log("Slider lower limit: ", mySlider.getValue());
 							mySlider.setLimits(minTimeoutBoms, 90, 1);
 							if(this.plugin.settings.typingTimeoutMilliseconds < minTimeoutBoms * 1000) {
 								this.plugin.settings.typingTimeoutMilliseconds = minTimeoutBoms * 1000;
@@ -119,7 +119,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		.setName("Editing Timeout")
 		.setDesc(description)
 		.addSlider((slider) => mySlider = slider // implicit return without curlies
-		.setLimits(minTimeoutCams, 90, 1)
+		.setLimits(minTimeoutBoms, 90, 1)
 		.setValue(this.plugin.settings.typingTimeoutMilliseconds / 1000)
 		.onChange(async (value) => {
 			this.plugin.settings.typingTimeoutMilliseconds = value * 1000;
@@ -160,6 +160,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 					.onChange(async (newValue) => {
 						this.plugin.settings.enableClock = newValue;
 						await this.plugin.saveSettings();
+						await this.plugin.loadSettings();
 						await this.display();
 					}),
 			);
