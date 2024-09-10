@@ -16,7 +16,7 @@ export interface TimeThingsSettings {
 	enableModifiedKey: boolean;
 	modifiedKeyName: string;
 	modifiedKeyFormat: string;
-	modifiedThreshold: number; // todo: add settings field
+	modifiedThreshold: number;
 	
     //DURATION KEY
 	enableEditDurationKey: boolean;
@@ -64,7 +64,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		// #region prerequisites
+		// #region Prerequisites
 		const createLink = () => {
 			const linkEl = document.createDocumentFragment();
 
@@ -80,7 +80,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 
 
 
-		// #region custom frontmatter solution
+		// #region General
 		let mySlider : SliderComponent;
 		let myText: TextComponent;
 		const minTimeoutBoms = 10; // Not sure
@@ -108,7 +108,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 							if(this.plugin.settings.typingTimeoutMilliseconds < minTimeoutBoms * 1000) {
 								this.plugin.settings.typingTimeoutMilliseconds = minTimeoutBoms * 1000;
 								myText.setValue(minTimeoutBoms.toString());
-								console.log("Bump BOMS timeout", this.plugin.settings.typingTimeoutMilliseconds);
+								// console.log("Bump BOMS timeout", this.plugin.settings.typingTimeoutMilliseconds);
 							}
 						}
 						await this.plugin.saveSettings();
@@ -149,12 +149,10 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				})
 		});
-			
-
 		// #endregion
 
 
-		// #region status bar
+		// #region Status bar
 		containerEl.createEl("h1", { text: "Status bar" });
 		containerEl.createEl("p", { text: "Display symbols in the status bar" });
         containerEl.createEl("h2", { text: "🕰️ Clock" });
@@ -232,7 +230,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						.setPlaceholder("Active")
 						.setValue(this.plugin.settings.editIndicatorActive)
 						.onChange(async (value) => {
-							console.log('update active tracking icon: ', value)
+							// console.log('update active tracking icon: ', value)
 							this.plugin.settings.editIndicatorActive = value;
 							await this.plugin.saveSettings();
 						}),
@@ -242,8 +240,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 						.setPlaceholder("Inactive")
 						.setValue(this.plugin.settings.editIndicatorInactive)
 						.onChange(async (value) => {
-							console.log('update inactive tracking icon: ', value)
-
+							// console.log('update inactive tracking icon: ', value)
 							this.plugin.settings.editIndicatorInactive = value;
 							await this.plugin.saveSettings();
 						}),
@@ -252,17 +249,16 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		// #endregion
 
 
-		// #region keys
+		// #region Frontmatter
 		containerEl.createEl("h1", { text: "Frontmatter" });
 		containerEl.createEl("p", { text: "Handles timestamp keys in frontmatter." });
 
-		// #region frontmatter modification timestamp
+		// Modified timestamp
 		containerEl.createEl("h2", { text: "🔑 Modified timestamp" });
 		containerEl.createEl("p", { text: "Track the last time a note was edited." });
 		
-
 		new Setting(containerEl)
-			.setName("Enable update of the modified key") // TODO: only update after a certain amount has passed? Otherwise pretty useless depending on what triggers the tracking. I think mouse doesn't!
+			.setName("Enable update of the modified key")
 			.setDesc("")
 			.addToggle((toggle) =>
 				toggle
@@ -314,7 +310,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 			let thresholdText: TextComponent;
 			new Setting(containerEl.createDiv({cls: "textbox"}))
 				.setName("Date refresh threshold")
-				.setDesc("Active typing duration that must be exceeded in one continuous period for the modification date to be updated. Will always be updated if lower than the editing timeout.")
+				.setDesc("Active typing duration that must be exceeded in one continuous period for the modification date to be updated.")
 				.addSlider((slider) => slider // implicit return without curlies
 					.setLimits(0, 60, 1)
 					.setValue(this.plugin.settings.modifiedThreshold / 1000)
@@ -339,7 +335,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		}
 		// #endregion
 
-		// #region edited_duration key
+		// Edit duration
 		containerEl.createEl("h2", { text: "🔑 Edited duration" });
 		containerEl.createEl("p", {
 			text: "Track for how long you have been editing a note.",
@@ -399,8 +395,7 @@ export class TimeThingsSettingsTab extends PluginSettingTab {
 		// #endregion
 
 
-		// #region danger zone
-
+		// #region Danger zone
 		containerEl.createEl("h1", { text: "Danger zone" });
 		containerEl.createEl("p", { text: "You've been warned!" });
 

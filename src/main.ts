@@ -4,7 +4,6 @@ import {
 	WorkspaceLeaf,
 	Plugin,
 	TFile,
-	Notice,
 	debounce,
 	moment
 } from "obsidian";
@@ -43,7 +42,6 @@ export default class TimeThings extends Plugin {
 	updateFrontmatter: (useCustomSolution: boolean, activeView: MarkdownView) => void;
 	resetEditing: () => void;
 	resetIcon: () => void;
-
 	
 
 	//#region Load plugin
@@ -74,7 +72,7 @@ export default class TimeThings extends Plugin {
 		);
 
 		// Variables initialization
-		this.isDebugBuild = true; // for debugging purposes TODO: reset
+		this.isDebugBuild = false; // for debugging purposes TODO: reset
 
         // Set up Status Bar items
 		this.setUpStatusBarItems();
@@ -160,6 +158,7 @@ export default class TimeThings extends Plugin {
 		});
 	}
 
+	// UNUSED
 	// BOMS
 	// registerFileModificationEvent() {
 	// 	// ! If BOMS is updated it triggers a new file modification event
@@ -180,7 +179,7 @@ export default class TimeThings extends Plugin {
 	// 	);
 	// }
 
-	// NONE
+	// UNUSED
 	registerMouseDownDOMEvent() {
 		this.registerDomEvent(document, "mousedown", (evt: MouseEvent) => {
 			// Prepare everything
@@ -227,7 +226,6 @@ export default class TimeThings extends Plugin {
 
 
 	//region Editing tracking
-
 	updateEditing(useCustomSolution: boolean, activeView: MarkdownView) {
 		// Save current time only once, regardless of repeated calls (flag)
 		if(!this.isEditing) {
@@ -252,7 +250,7 @@ export default class TimeThings extends Plugin {
 
 		if (useCustomSolution && environment instanceof Editor) {
 			// CAMS: Custom Asset Management System
-			console.log("Calling CAMS handler");
+			this.isDebugBuild && console.log("Calling CAMS handler");
 			if(editDiff !== null && editDiff >= modificationThreshold) {
 				this.isDebugBuild && console.log(`Modified property threshold reached with ${editDiff}s, update property!`)
 				this.updateModifiedPropertyCAMS(environment);
@@ -262,7 +260,7 @@ export default class TimeThings extends Plugin {
 			}
 		} else if (!useCustomSolution && environment instanceof TFile) {			
 			// BOMS: Build-in Object Management System
-			console.log("Calling BOMS handler");
+			this.isDebugBuild && console.log("Calling BOMS handler");
 			if(editDiff !== null && editDiff >= modificationThreshold) {
 				this.isDebugBuild && console.log(`Modified property threshold reached with ${editDiff}s, update property!`)
 				this.updateModifiedPropertyBOMS(environment);
@@ -300,22 +298,13 @@ export default class TimeThings extends Plugin {
 
 
 	//#region Frontmatter update modified
-
 	// CAMS
     updateModifiedPropertyCAMS(editor: Editor) {
 		this.isDebugBuild && console.log('*** CAMS: Update modified property! ***');
 		// With the old solution updating frontmatter keys only worked on BOMS!
-		// todo: allow key changes
 		const userDateFormat = this.settings.modifiedKeyFormat; // Target format. Existing format unknown and irrelevant.
 		const userModifiedKeyName = this.settings.modifiedKeyName;
 		const dateFormatted = moment().format(userDateFormat);
-
-		const fetched = CAMS.getLine(editor, this.settings.modifiedKeyName)
-		if(fetched === undefined) {
-			// TODO: Initialize somehow, cause it's not crfeated by using CAMS!
-			console.log("!!!Attempt to init frontmatter");
-			BOMS.setValue(editor, userModifiedKeyName, dateFormatted);
-		}
 		CAMS.setLine(editor, userModifiedKeyName, dateFormatted);
 	} 
 
@@ -331,42 +320,35 @@ export default class TimeThings extends Plugin {
 			},
 		);
 	}
-	
 	//#region Frontmatter update duration
 
 	
 	// CAMS
 	async updateDurationPropertyCAMS(editor: Editor) {
 		this.isDebugBuild && console.log('*** CAMS: Update duration property! ***');
-		// With the old solution updating frontmatter keys only worked on BOMS!
-
-		//TODO update
-
-		
-		// Fetch edit duration
+		// With the old solution updating frontmatter keys only worked on BOMS!		
+		// Fetch duration
 		const fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
 		const userDateFormat = this.settings.editDurationKeyFormat;
 		let newValue : any;
-		
+		// Check for existing
 		if(fieldLine === undefined) {
-			console.log(`Undefined value for ${this.settings.editDurationKeyName}`);
 			newValue = moment.duration(0, "minutes").format(userDateFormat, { trim: false })
 		} else {
 			newValue = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
-			// const test = moment(newValue, userDateFormat, true).isValid()
 		}
-		this.isDebugBuild && console.log(`Current edit duration ${newValue} and current/new formatter ${userDateFormat}`);
-
 		// Increment & set
-		const incremented = moment.duration(newValue).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
-		this.isDebugBuild && console.log(`Increment CAMS edit duration from ${newValue} to ${incremented}`);
+		const incremented = moment.duration(newValue)
+			.add(this.timeout, 'milliseconds')
+			.format(userDateFormat, { trim: false }); // Force formatting
+		this.isDebugBuild && console.log(`Increment CAMS edit duration from ${newValue} to ${incremented} with formatter ${userDateFormat}`);
 		CAMS.setLine(editor, this.settings.editDurationKeyName, incremented.toString());
 	}
 
 	// BOMS (Default)
-	/* Date updating is delicate: Moment.js validity check might check an updated setting
-		against a pre-existing date and would return false. So it would never act on format changes.
-		Instead: Check existing duration for general validity. Increment. Display. (Format is validated in settings)
+	/* Date updating is delicate: Moment.js validity check might check an updated formatter
+		against a pre-existing date and would return false. So it would never act after format changes.
+		Instead: Check existing duration for general validity. Increment. Display in the given, pre-validated format.
 	*/ 
     async updateDurationPropertyBOMS(file: TFile) {
 		this.isDebugBuild && console.log('*** BOMS: Update duration property! ***');
@@ -388,7 +370,10 @@ export default class TimeThings extends Plugin {
 				}
 				// Increment
 				const userDateFormat = this.settings.editDurationKeyFormat;
-				const incremented = moment.duration(value).add(this.timeout, 'milliseconds').format(userDateFormat, {trim: false});
+				const incremented = moment
+					.duration(value)
+					.add(this.timeout, 'milliseconds')
+					.format(userDateFormat, {trim: false});
 				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`);
                 BOMS.setValue(
                     frontmatter,
@@ -465,7 +450,7 @@ export default class TimeThings extends Plugin {
 
 		this.timeout = this.settings?.typingTimeoutMilliseconds;
 		if(!this.timeout || isNaN(this.timeout) || this.timeout === undefined) {
-			console.log(`Timeout setting ${this.timeout} invalid, fallback!`);
+			this.isDebugBuild && console.log(`Timeout setting ${this.timeout} invalid, fallback!`);
 			this.timeout = 10000;
 		}
 
