@@ -1,9 +1,5 @@
 import { Editor } from "obsidian";
 
-export function isLineIndented(line: string): boolean {
-	return /^[\s\t]/.test(line);
-}
-
 export function getLine(editor: Editor, fieldPath: string): number | undefined {
     const frontmatterLine = frontmatterEndLine(editor);
     const keys = fieldPath.split(".");
@@ -25,13 +21,10 @@ export function getLine(editor: Editor, fieldPath: string): number | undefined {
             if (currentFieldName === key) {
                 emergingPath.push(currentFieldName);
                 const targetPath = fieldPath.split(".");
-                const targetPathShrink = targetPath.slice(
-                    0,
-                    emergingPath.length,
-                );
+                const targetPathShrink = targetPath.slice(0, emergingPath.length);
                 if (
-                    (targetPathShrink.join(".") === emergingPath.join(".")) ===
-                    false
+                    (targetPathShrink.join(".") === emergingPath.join("."))
+                    === false
                 ) {
                     emergingPath.pop();
                     startLine = i + 1;
@@ -63,10 +56,31 @@ export function getLine(editor: Editor, fieldPath: string): number | undefined {
     return undefined;
 }
 
-export function isFrontmatterPresent(editor: Editor): boolean {
+export function setLine(editor: Editor, fieldPath: string, fieldValue: string,) {
+    // Check for frontmatter
+    if(!isFrontmatterPresent(editor)) {
+        // Create empty frontmatter
+        editor.setLine(0, "---\n---\n");
+    }
+    // Check for path
+    if(!fieldPathPresent(editor, fieldPath)) {
+        appendNewLine(editor, fieldPath, fieldValue);
+    } else {
+	    overrideCurrentLine(editor, fieldPath, fieldValue);
+    }
+}
+
+//#region private
+function isLineIndented(line: string): boolean {
+	return /^[\s\t]/.test(line);
+}
+
+
+function isFrontmatterPresent(editor: Editor): boolean {
 	if (editor.getLine(0) !== "---") {
 		return false;
 	}
+
 	for (let i = 1; i <= editor.lastLine(); i++) {
 		if (editor.getLine(i) === "---") {
 			return true;
@@ -75,7 +89,7 @@ export function isFrontmatterPresent(editor: Editor): boolean {
 	return false;
 }
 
-export function frontmatterEndLine(editor: Editor): number | undefined {
+function frontmatterEndLine(editor: Editor): number | undefined {
 	if (isFrontmatterPresent(editor)) {
 		for (let i = 1; i <= editor.lastLine(); i++) {
 			if (editor.getLine(i) === "---") {
@@ -86,16 +100,31 @@ export function frontmatterEndLine(editor: Editor): number | undefined {
 	return undefined; // # End line not found
 }
 
-
-export function setValue(editor: Editor, fieldPath: string, fieldValue: string,) {
-	// The thing with this function is that it uses the format from settings to check against. I can make it as an argument that can be passed, or better yet, eradicate the check from the function to make it more atomic and place it somewhere else in the main code.
-	const fieldLine = getLine(editor, fieldPath);
-	if (fieldLine === undefined) {
-        console.log("!!!fieldline undefined"); // TODO: delete
-		return;
-	}
-	const initialLine = editor.getLine(fieldLine).split(":", 1);
-	const newLine = initialLine[0] + ": " + fieldValue;
-    console.log('!!!fieldline/newline', fieldLine, newLine);
-	editor.setLine(fieldLine, newLine);
+function fieldPathPresent(editor: Editor, fieldPath: string): boolean {
+    const pathValue = getLine(editor, fieldPath)
+    if(pathValue) {
+        return true;
+    }
+    return false;
 }
+
+function appendNewLine(editor: Editor, fieldPath: string, fieldValue: string) {
+    const endLine = frontmatterEndLine(editor);
+    if(!endLine) {
+        console.log("No frontmatter endline found!");
+        return;
+    }
+    editor.setLine(endLine, fieldPath + ": " + fieldValue + "\n---");
+}
+
+function overrideCurrentLine(editor: Editor, fieldPath: string, fieldValue: string) {
+    const currentValue = getLine(editor, fieldPath);
+    if (currentValue === undefined) {
+        console.log("Value not found!");
+        return;
+    }
+    const initialLine = editor.getLine(currentValue).split(":", 1);
+    const newLine = initialLine[0] + ": " + fieldValue;
+    editor.setLine(currentValue, newLine);
+}
+//#endregion

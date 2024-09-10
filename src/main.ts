@@ -316,7 +316,7 @@ export default class TimeThings extends Plugin {
 			console.log("!!!Attempt to init frontmatter");
 			BOMS.setValue(editor, userModifiedKeyName, dateFormatted);
 		}
-		CAMS.setValue(editor, userModifiedKeyName, dateFormatted);
+		CAMS.setLine(editor, userModifiedKeyName, dateFormatted);
 	} 
 
 	// BOMS (Default)
@@ -360,7 +360,7 @@ export default class TimeThings extends Plugin {
 		// Increment & set
 		const incremented = moment.duration(newValue).add(this.timeout, 'milliseconds').format(userDateFormat, { trim: false }); // Always stick to given format
 		this.isDebugBuild && console.log(`Increment CAMS edit duration from ${newValue} to ${incremented}`);
-		CAMS.setValue(editor, this.settings.editDurationKeyName, incremented.toString());
+		CAMS.setLine(editor, this.settings.editDurationKeyName, incremented.toString());
 	}
 
 	// BOMS (Default)
