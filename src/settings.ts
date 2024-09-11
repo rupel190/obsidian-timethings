@@ -1,5 +1,9 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import TimeThings from "./main";
+<<<<<<< Updated upstream
+=======
+import moment from "obsidian";
+>>>>>>> Stashed changes
 
 export interface TimeThingsSettings {
     //CAMS
