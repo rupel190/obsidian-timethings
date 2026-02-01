@@ -4,8 +4,9 @@ import {
 	WorkspaceLeaf,
 	Plugin,
 	TFile,
+	debounce,
+	moment
 } from "obsidian";
-import { moment } from "obsidian";
 import {
 	MostEditedView,
 	VIEW_TYPE_MOST_EDITED as VIEW_TYPE_MOST_EDITED,
@@ -20,20 +21,35 @@ import {
 } from "./settings";
 import * as timeUtils from "./time.utils";
 import * as gates from "./gates.utils";
+import { allowedNodeEnvironmentFlags } from "process";
 
 export default class TimeThings extends Plugin {
 	settings: TimeThingsSettings;
 	isDebugBuild: boolean;
-	clockBar: HTMLElement; // # Required
-	debugBar: HTMLElement;
-	editDurationBar: HTMLElement;
-	allowEditDurationUpdate: boolean;
-	isProccessing = false;
 
+	// Edit tracking
+	isEditing = false; // Not a lock but used for tracking (Status bar)
+	startTime: number | null; // How long was isEditing active
+	activityIconActive : boolean = false; // Will match the editing timer of isEditing, but it's better to decouple these variables
+	timeout: number; // Loaded from settings, timeout for tracking and periodic saving
+
+	// Status bar
+	clockBar: HTMLElement; // # Required
+	editIndicatorBar: HTMLElement;
+	debugBar: HTMLElement;
+	
+	// Debounced functions
+	updateFrontmatter: (useCustomSolution: boolean, activeView: MarkdownView) => void;
+	resetEditing: () => void;
+	resetIcon: () => void;
+	
+
+	//#region Load plugin
 	async onload() {
+		// Load settings
+		await this.loadSettings();
 
         // Add commands
-
         this.addCommand(
             {
                 id: 'Show most edited notes view',
@@ -45,31 +61,24 @@ export default class TimeThings extends Plugin {
         );
 
         // Add buttons
-
         this.addRibbonIcon("history", "Activate view", () => {
             this.activateMostEditedNotesView();
         });
 
         // Register views
-
 		this.registerView(
 			VIEW_TYPE_MOST_EDITED,
 			(leaf) => new MostEditedView(leaf),
 		);
 
-        // Load settings
-
-		await this.loadSettings();
-
 		// Variables initialization
-		this.isDebugBuild = false; // for debugging purposes
-		this.allowEditDurationUpdate = true; // for cooldown
+		this.isDebugBuild = false; // for debugging purposes TODO: reset
 
         // Set up Status Bar items
 		this.setUpStatusBarItems();
 
 		// Events initialization
-		this.registerFileModificationEvent();
+		// this.registerFileModificationEvent();
 		this.registerKeyDownDOMEvent();
 		this.registerLeafChangeEvent();
 		this.registerMouseDownDOMEvent();
@@ -77,53 +86,37 @@ export default class TimeThings extends Plugin {
         // Add a tab for settings
 		this.addSettingTab(new TimeThingsSettingsTab(this.app, this));
 	}
+	//#endregion
 
-    registerMouseDownDOMEvent() {
-		this.registerDomEvent(document, "mousedown", (evt: MouseEvent) => {
-			// Prepare everything
 
-			const activeView =
-				this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (activeView === null) {
-				return;
-			}
-			const editor: Editor = activeView.editor;
-			if (editor.hasFocus() === false) {
-				return;
-			}
-
-			this.onUserActivity(true, activeView, { updateMetadata: false, updateStatusBar: true });
-		});
-	}
-
+	//#region UserActivity events
+	// CAMS
 	registerLeafChangeEvent() {
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", (leaf) => {
 				// Prepare everything
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const useCustom : boolean = this.settings.useCustomFrontmatterHandlingSolution;
+				this.isDebugBuild && console.log(`Key down, use: ${useCustom ? "CAMS" : "BOMS"}`);
 
-				const activeView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (activeView === null) {
 					return;
 				}
-				const editor = activeView.editor;
-				if (editor.hasFocus() === false) {
-					return;
+
+				if(useCustom) {
+					const editor = activeView.editor;
+					if (editor.hasFocus() === false) {
+						return;
+					}
 				}
-
-				// Change the duration icon in status bar
-
-				this.onUserActivity(true, activeView, {
-					updateMetadata: false,
-                    updateStatusBar: true,
-				});
+				this.onUserActivity(useCustom, activeView);
 			}),
 		);
 	}
 
+	// CAMS
 	registerKeyDownDOMEvent() {
 		this.registerDomEvent(document, "keyup", (evt: KeyboardEvent) => {
-			// If CAMS enabled
 			const ignoreKeys = [
 				"ArrowDown",
 				"ArrowUp",
@@ -144,52 +137,66 @@ export default class TimeThings extends Plugin {
 				return;
 			}
 
-			if (this.settings.useCustomFrontmatterHandlingSolution === true) {
-				// Make sure the document is ready for edit
+			// Make sure the document is ready for edit
+			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+			const useCustom : boolean = this.settings.useCustomFrontmatterHandlingSolution;
+			// this.isDebugBuild && console.log(`Key down, use: ${useCustom ? "CAMS" : "BOMS"}`);
+			
+			if (activeView === null) {
+				this.isDebugBuild && console.log("No active view");
+				return;
+			}
 
-				const activeView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (activeView === null) {
-					if (this.isDebugBuild) {
-						console.log("No active view");
-					}
-					return;
-				}
+			if (useCustom) {
 				const editor: Editor = activeView.editor;
 				if (editor.hasFocus() === false) {
-					if (this.isDebugBuild) {
-						console.log("No focus");
-					}
+					this.isDebugBuild && console.log("No focus");
 					return;
-				}
-
-				// Update everything
-
-				this.onUserActivity(true, activeView);
+				}			
 			}
+			this.onUserActivity(useCustom, activeView);
 		});
 	}
 
-	registerFileModificationEvent() {
-		this.registerEvent(
-			this.app.vault.on("modify", (file) => {
-				// Make everything ready for edit
+	// UNUSED
+	// BOMS
+	// registerFileModificationEvent() {
+	// 	// ! If BOMS is updated it triggers a new file modification event
+	// 	this.registerEvent(
+	// 		this.app.vault.on("modify", (file) => {
+	// 			// Make everything ready for edit
+	// 			const activeView =
+	// 				this.app.workspace.getActiveViewOfType(MarkdownView);
+	// 			if (activeView === null) {
+	// 				return;
+	// 			}
+	// 			console.log('filemod');
 
-				const activeView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (activeView === null) {
-					return;
-				}
+	// 			if (this.settings.useCustomFrontmatterHandlingSolution === false) {
+	// 				this.onUserActivity(false, activeView);
+	// 			}
+	// 		}),
+	// 	);
+	// }
 
-				// Main
-				if (
-					this.settings.useCustomFrontmatterHandlingSolution === false
-				) {
-					this.onUserActivity(false, activeView);
-				}
-			}),
-		);
+	// UNUSED
+	registerMouseDownDOMEvent() {
+		this.registerDomEvent(document, "mousedown", (evt: MouseEvent) => {
+			// Prepare everything
+			const activeView =
+				this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (activeView === null) {
+				return;
+			}
+			const editor: Editor = activeView.editor;
+			if (editor.hasFocus() === false) {
+				return;
+			}
+
+			this.onUserActivity(true, activeView, { updateMetadata: false, updateTypingIndicator: false });
+		});
 	}
+	// #endregion
     
 
 	async activateMostEditedNotesView() {
@@ -205,177 +212,181 @@ export default class TimeThings extends Plugin {
 			// Our view could not be found in the workspace, create a new leaf
 			// in the right sidebar for it
 			leaf = workspace.getRightLeaf(false);
-			await leaf.setViewState({
+			await leaf?.setViewState({
 				type: VIEW_TYPE_MOST_EDITED,
 				active: true,
 			});
 		}
 
 		// "Reveal" the leaf in case it is in a collapsed sidebar
-		workspace.revealLeaf(leaf);
+		if(leaf) {
+			workspace.revealLeaf(leaf);
+		}
 	}
 
-    // A function for reading and editing metadata realtime
-	onUserActivity(
-		useCustomSolution: boolean,
-		activeView: MarkdownView,
-		options: { updateMetadata: boolean, updateStatusBar: boolean, } = { updateMetadata: true, updateStatusBar: true, },
-	) {
-		const { updateMetadata, updateStatusBar } = options;
-		// Gets called when a user changes a leaf, clicks a mouse, types in the editor, or modifies a file
-        let environment;
+
+	//region Editing tracking
+	updateEditing(useCustomSolution: boolean, activeView: MarkdownView) {
+		// Save current time only once, regardless of repeated calls (flag)
+		if(!this.isEditing) {
+			this.isEditing = true;
+			this.startTime = moment.now();
+			this.isDebugBuild && console.log(`Editing ${this.isEditing} with startTime `, moment(this.startTime).format(this.settings.modifiedKeyFormat));
+		}
+		this.updateFrontmatter(useCustomSolution, activeView);
+		this.resetEditing();
+	}
+
+	validEditDuration() : number | null {
+		const diffSeconds = (moment.now() - moment.duration(this.startTime).asMilliseconds()) / 1000;
+		return isNaN(diffSeconds) ? null : diffSeconds;
+	}
+
+	updateMetadata (useCustomSolution: boolean, activeView: MarkdownView) {
+		let environment;
         useCustomSolution ? environment = activeView.editor : environment = activeView.file;
-        
+		const editDiff = this.validEditDuration()
+		const modificationThreshold = this.settings.modifiedThreshold/1000;
 
-		// Check if the file is in the blacklisted folder
-		// Check if the file has a property that puts it into a blacklist
-		// Check if the file itself is in the blacklist
-
-        //
-        if (updateStatusBar) {
-            // update status bar
-        }
-        
-		// Update metadata using either BOMS or cams
-		if (updateMetadata) {
-			if (
-				useCustomSolution &&
-				environment instanceof Editor
-			) {
-				// CAMS
-				this.updateModifiedPropertyEditor(environment);
-				if (this.settings.enableEditDurationKey) {
-					this.updateDurationPropertyEditor(environment);
-				}
-			} else if (
-				!useCustomSolution &&
-				environment instanceof TFile
-			) {
-				// BOMS
-				this.updateModifiedPropertyFrontmatter(environment);
-				if (this.settings.enableEditDurationKey) {
-					this.updateDurationPropertyFrontmatter(environment);
-				}
+		if (useCustomSolution && environment instanceof Editor) {
+			// CAMS: Custom Asset Management System
+			this.isDebugBuild && console.log("Calling CAMS handler");
+			if(editDiff !== null && editDiff >= modificationThreshold) {
+				this.isDebugBuild && console.log(`Modified property threshold reached with ${editDiff}s, update property!`)
+				this.updateModifiedPropertyCAMS(environment);
+			}
+			if (this.settings.enableEditDurationKey) {
+				this.updateDurationPropertyCAMS(environment);
+			}
+		} else if (!useCustomSolution && environment instanceof TFile) {			
+			// BOMS: Build-in Object Management System
+			this.isDebugBuild && console.log("Calling BOMS handler");
+			if(editDiff !== null && editDiff >= modificationThreshold) {
+				this.isDebugBuild && console.log(`Modified property threshold reached with ${editDiff}s, update property!`)
+				this.updateModifiedPropertyBOMS(environment);
+			}
+			if (this.settings.enableEditDurationKey) {
+				this.updateDurationPropertyBOMS(environment);
 			}
 		}
 	}
 
-    updateModifiedPropertyEditor(editor: Editor) {
-		const dateNow = moment();
-		const userDateFormat = this.settings.modifiedKeyFormat;
-		const dateFormatted = dateNow.format(userDateFormat);
+	// Called on typing
+	onUserActivity(
+		useCustomSolution: boolean,
+		activeView: MarkdownView,
+		options: { updateMetadata: boolean, updateTypingIndicator: boolean, } = { updateMetadata: true, updateTypingIndicator: true, },
+	) {
+		const { updateMetadata, updateTypingIndicator } = options;
+		let environment;
+        useCustomSolution ? environment = activeView.editor : environment = activeView.file;
 
-		const userModifiedKeyName = this.settings.modifiedKeyName;
-		const valueLineNumber = CAMS.getLine(editor, userModifiedKeyName);
-
-		if (typeof valueLineNumber !== "number") {
-			this.isDebugBuild && console.log("Couldn't get the line number of last_modified property");
-			return;
+		// Check if the file is in the blacklisted folder
+		// Check if the file has a property that puts it into a blacklist
+		// Check if the file itself is in the blacklist
+		
+		if (updateMetadata) {
+			// Update metadata using either BOMS or CAMS
+			// this.isDebugBuild && console.log(`UserActivity: ${useCustomSolution ? "CAMS" : "BOMS"}, with timeout ${this.timeout}`);
+			if(updateTypingIndicator) {
+				this.updateIcon();
+			}
+			this.updateEditing(useCustomSolution, activeView);
 		}
-		const value = editor.getLine(valueLineNumber).split(/:(.*)/s)[1].trim();
-		if (moment(value, userDateFormat, true).isValid() === false) {
-            // Little safecheck in place to reduce chance of bugs
-            this.isDebugBuild && console.log("Wrong format of last_modified property");
-			return;
-		}
-        // this.setValue(true, editor, userModifiedKeyName, dateFormatted,);
-		CAMS.setValue(editor, userModifiedKeyName, dateFormatted);
 	}
+	//#endregion
 
-    async updateModifiedPropertyFrontmatter(file: TFile) {
+
+	//#region Frontmatter update modified
+	// CAMS
+    updateModifiedPropertyCAMS(editor: Editor) {
+		this.isDebugBuild && console.log('*** CAMS: Update modified property! ***');
+		// With the old solution updating frontmatter keys only worked on BOMS!
+		const userDateFormat = this.settings.modifiedKeyFormat; // Target format. Existing format unknown and irrelevant.
+		const userModifiedKeyName = this.settings.modifiedKeyName;
+		const dateFormatted = moment().format(userDateFormat);
+		CAMS.setLine(editor, userModifiedKeyName, dateFormatted);
+	} 
+
+	// BOMS (Default)
+    async updateModifiedPropertyBOMS(file: TFile) {
+		this.isDebugBuild && console.log('*** BOMS: Update modified property! ***');
 		await this.app.fileManager.processFrontMatter(
 			file as TFile,
 			(frontmatter) => {
-				const dateNow = moment();
-				const dateFormatted = dateNow.format(
-					this.settings.modifiedKeyFormat,
-				);
-
-				const updateKeyValue = moment(
-					BOMS.getValue(frontmatter, this.settings.modifiedKeyName),
-					this.settings.modifiedKeyFormat,
-				);
-
-				if (
-					updateKeyValue.add(
-						this.settings.updateIntervalFrontmatterMinutes,
-						"minutes",
-					) > dateNow
-				) {
-					return;
-				}
-
-				BOMS.setValue(
-					frontmatter,
-					this.settings.modifiedKeyName,
-					dateFormatted,
-				);
+				const dateFormatted = moment().format(this.settings.modifiedKeyFormat);
+				// BOMS creates key if it doesn't exist
+				BOMS.setValue(frontmatter, this.settings.modifiedKeyName, dateFormatted);
 			},
 		);
 	}
-    
-    async updateDurationPropertyFrontmatter(file: TFile) {
-        // Prepare everything
-        if (this.allowEditDurationUpdate === false) {
-            return;
-        }
-        this.allowEditDurationUpdate = false;
+	//#region Frontmatter update duration
+
+	
+	// CAMS
+	async updateDurationPropertyCAMS(editor: Editor) {
+		this.isDebugBuild && console.log('*** CAMS: Update duration property! ***');
+		// With the old solution updating frontmatter keys only worked on BOMS!		
+		// Fetch duration
+		const fieldLine: number | undefined = CAMS.getLine(editor, this.settings.editDurationKeyName); 
+		const userDateFormat = this.settings.editDurationKeyFormat;
+		let newValue : any;
+		// Check for existing
+		if(fieldLine === undefined) {
+			newValue = moment.duration(0, "minutes").format(userDateFormat, { trim: false })
+		} else {
+			newValue = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
+		}
+		// Increment & set
+		const incremented = moment.duration(newValue)
+			.add(this.timeout, 'milliseconds')
+			.format(userDateFormat, { trim: false }); // Force formatting
+		this.isDebugBuild && console.log(`Increment CAMS edit duration from ${newValue} to ${incremented} with formatter ${userDateFormat}`);
+		CAMS.setLine(editor, this.settings.editDurationKeyName, incremented.toString());
+	}
+
+	// BOMS (Default)
+	/* Date updating is delicate: Moment.js validity check might check an updated formatter
+		against a pre-existing date and would return false. So it would never act after format changes.
+		Instead: Check existing duration for general validity. Increment. Display in the given, pre-validated format.
+	*/ 
+    async updateDurationPropertyBOMS(file: TFile) {
+		this.isDebugBuild && console.log('*** BOMS: Update duration property! ***');
+        // Slow update
         await this.app.fileManager.processFrontMatter(
             file as TFile,
-            (frontmatter) => {
-                let value = BOMS.getValue(
-                    frontmatter,
-                    this.settings.editDurationPath,
-                );
+            (frontmatter: any) => {
+				// Fetch
+                let value = BOMS.getValue(frontmatter, this.settings.editDurationKeyName);
+				// Zero if non-existent
                 if (value === undefined) {
-                    value = "0";
+					this.isDebugBuild && console.log('No edit duration, initialize with 0.');
+                    value = moment.duration(0);
                 }
-
-                // Increment
-
-                const newValue = +value + 10;
+				// Check for general validity
+				if(!moment.duration(value).isValid()) {
+					console.log(`Unable to update ${this.settings.editDurationKeyName} due to invalid value of ${value}.`);
+					return;
+				}
+				// Increment
+				const userDateFormat = this.settings.editDurationKeyFormat;
+				const incremented = moment
+					.duration(value)
+					.add(this.timeout, 'milliseconds')
+					.format(userDateFormat, {trim: false});
+				this.isDebugBuild && console.log(`Increment BOMS from ${value} to ${incremented}`);
                 BOMS.setValue(
                     frontmatter,
-                    this.settings.editDurationPath,
-                    newValue,
+                    this.settings.editDurationKeyName,
+                    incremented,
                 );
             },
         );
-
-        // Cool down
-
-        await sleep(10000 - this.settings.nonTypingEditingTimePercentage * 100);
-        this.allowEditDurationUpdate = true;
     }
+	//#endregion
 
-	async updateDurationPropertyEditor(editor: Editor) {
-		// Prepare everything
-		if (this.allowEditDurationUpdate === false) {
-			return;
-		}
-		this.allowEditDurationUpdate = false;
-		const fieldLine = CAMS.getLine(editor, this.settings.editDurationPath);
-		if (fieldLine === undefined) {
-			this.allowEditDurationUpdate = true;
-			return;
-		}
 
-		// Increment
-
-		const value = editor.getLine(fieldLine).split(/:(.*)/s)[1].trim();
-		const newValue = +value + 1;
-		CAMS.setValue(
-			editor,
-			this.settings.editDurationPath,
-			newValue.toString(),
-		);
-
-		// Cool down
-
-		await sleep(1000 - this.settings.nonTypingEditingTimePercentage * 10);
-		this.allowEditDurationUpdate = true;
-	}
-
+	//#region Status bar
     // Don't worry about it
 	updateClockBar() {
 		const dateNow = moment();
@@ -384,46 +395,95 @@ export default class TimeThings extends Plugin {
 		const dateChosen = this.settings.isUTC ? dateUTC : dateNow;
 		const dateFormatted = dateChosen.format(this.settings.clockFormat);
 		const emoji = timeUtils.momentToClockEmoji(dateChosen);
-
-		this.settings.showEmojiStatusBar
-			? this.clockBar.setText(emoji + " " + dateFormatted)
-			: this.clockBar.setText(dateFormatted);
+		
+		this.clockBar.setText(emoji + " " + dateFormatted)
+		// this.settings.enableClock
+		// 	? this.clockBar.setText(emoji + " " + dateFormatted)
+		// 	: this.clockBar.setText(dateFormatted);
 	}
 
-    // Gets called on OnLoad
+	// Typing indicator
+	updateIcon() {
+		if(!this.activityIconActive) {
+			this.editIndicatorBar.setText(this.settings.editIndicatorActive);
+			this.activityIconActive = true;
+			this.isDebugBuild && console.log('Activate typing icon, active: ', this.activityIconActive, this.settings.editIndicatorActive);
+		}
+		this.resetIcon();
+	}
+
+    // Called on OnLoad, adds status bar
     setUpStatusBarItems() {
+		// Clock
 		if (this.settings.enableClock) {
-			// Add clock icon
-			// Adds a status bar
 			this.clockBar = this.addStatusBarItem();
-			this.clockBar.setText(":)");
+			this.clockBar.setText(timeUtils.momentToClockEmoji(moment()));
 
 			// Change status bar text every second
 			this.updateClockBar();
 			this.registerInterval(
 				window.setInterval(
 					this.updateClockBar.bind(this),
-					+this.settings.updateIntervalMilliseconds,
+					+ this.timeout,
 				),
 			);
 		}
-
+		// Typing indicator
+		if (this.settings.enableEditIndicator) {
+			this.editIndicatorBar = this.addStatusBarItem();
+			this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
+		}
 	}
+	//#endregion
+
 
     // Don't worry about it
 	onunload() {}
 
-    // Don't worry about it
+	
 	async loadSettings() {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
 			await this.loadData(),
 		);
+
+		this.timeout = this.settings?.typingTimeoutMilliseconds;
+		if(!this.timeout || isNaN(this.timeout) || this.timeout === undefined) {
+			this.isDebugBuild && console.log(`Timeout setting ${this.timeout} invalid, fallback!`);
+			this.timeout = 10000;
+		}
+
+		this.isDebugBuild && console.log("LOAD settings: ", this.timeout);
+		// Because the methods are stored in a variable, the values inside the closure will be stale.
+		// Reloading here keeps it fresh and decoupled from the settings file.
+		this.updateFrontmatter = debounce((useCustomSolution: boolean, activeView: MarkdownView) => {
+			if(this.startTime) {
+				this.isDebugBuild && console.log(`Update frontmatter using ${useCustomSolution ? "CAMS" : "BOMS"}`);
+				this.updateMetadata(useCustomSolution, activeView);
+			}
+		}, this.timeout);
+				
+		this.resetIcon = debounce(() => {
+			// Inactive typing
+			this.editIndicatorBar.setText(this.settings.editIndicatorInactive);
+			this.activityIconActive = false;
+			this.isDebugBuild && console.log('Deactivate typing icon, active: ', this.activityIconActive, this.settings.editIndicatorInactive);
+		}, this.timeout, true);
+
+		this.resetEditing = debounce(() => {
+			// Reset state
+			let diff: number = moment.now() - moment.duration(this.startTime).asMilliseconds();
+			this.isDebugBuild && console.log(`Editing halted after ${diff/1000}s.`);
+			this.isEditing = false;
+			this.startTime = null;
+		}, this.timeout, true);
 	}
 
     // Don't worry about it
 	async saveSettings() {
+		this.isDebugBuild && console.log("SAVE settings")
 		await this.saveData(this.settings);
+		await this.loadSettings();
 	}
 }
